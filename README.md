@@ -232,7 +232,7 @@ server:
 include: "/home/lowpriv_user/blacklist.conf"
 ```
   
-#### Option 2: DOH via Quad9
+#### Option 2: DOT via Quad9
 ```
 # example config from: https://nurdletech.com/linux-notes/dns/unbound.html
 server:
