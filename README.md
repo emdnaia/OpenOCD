@@ -357,7 +357,7 @@ firewall-cmd --ipset=dynamic_hosts --get-entries | xargs -I{} firewall-cmd --per
 - We need to also add this to the cronjob of the Linux server, for example daily:
 ```
 0 0 * * * /usr/local/getpara.sh
-0 0 * * 1 /usr/local/updatepara.sh
+0 0 * * * /usr/local/updatepara.sh
 ```
 
 #### Optional Addblocking
