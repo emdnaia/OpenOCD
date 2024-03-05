@@ -1,6 +1,16 @@
 # OpenOCD
 
-This project helps you get the following: All my config files for 1)  only allowing whitelisted IPs to connect to gateways 2) only allowing clients whose IPs are resolved to FQDNs to get added to the firewall dynamically to access the VPNs 3) Encrypted DNS via ODOH / DOT 4) An adblocker for the DNS. 
+This project gets you:
+
+1) Only allowing whitelisted STATIC gateway IPs to access -> gateways | the static public ip has to match
+   
+2a) Only allowing whitelisted DYNAMIC IPs to access VPNs -> clients, other server | the dynamically gotten public ip has to match
+2b) Linux version of 2a
+
+3) Encrypted DNS via ODOH / DOT via Unbound + DNScrypt
+4) Adblocker skript to pull adlists for Unbound
+
+### Some steps
 
 1. **Initial Setup:** Start by configuring the OpenBSD gateway with the provided PF configuration to set up initial firewall rules.
 2. **Dynamic IP Script:** Implement the dynamic IP update script to maintain an up-to-date whitelist of IPs that can access the VPN.
@@ -84,7 +94,7 @@ block return out log proto {tcp udp} user _pbuild
 - Next, *Ensure you replace `myhost.myhoster.org` with your actual domain domain.*
 - The script below will access the FQDN and add it to the firewall ruletable for access.
 
-I've deployed the following script on `\usr\local\getpara.sh` it creates `temp_gotten_para` as well as `gotten-para` which contains the dynamic IPs to be added to the firewall for access.
+I've deployed the following script on `/usr/local/getpara.sh` it creates `temp_gotten_para` as well as `gotten-para` which contains the dynamic IPs to be added to the firewall for access.
 
 ```sh
 #!/bin/sh
