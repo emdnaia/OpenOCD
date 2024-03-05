@@ -391,8 +391,8 @@ mkdir -p ${TEMP}
 curl -s 'https://your-1st-list.txt' \
      'https://your-snd-list.txt' \
      'https://your-trd-list.txt' \
-     'https://your-foufth-list.txt' \
-     'https://your-sixth-list.txt/ ' \
+     'https://your-fourth-list.txt' \
+     'https://your-fifth-list.txt/ ' \
      > "${TEMP}/lists-domains"
 
 
