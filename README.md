@@ -217,7 +217,7 @@ routes = [
 ```
 #### Unbound for ODoH
 - We use Unbound for DNs, the config is at ` /var/unbound/etc/unbound.conf `
-- The config is as simple as this, uncomment the rest
+- The config is as simple as forwarding to the dnscrypt, uncomment the rest
 
 ```
 server:
@@ -229,7 +229,7 @@ server:
 	
 	forward-zone:
     		name: "."
-    #    	forward-addr: 127.0.0.1@54
+        	forward-addr: 127.0.0.1@54
 ```
   
 #### Option 2: ODOH via Quad9
