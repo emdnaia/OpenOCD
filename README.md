@@ -227,9 +227,12 @@ server:
 	forward-zone:
     		name: "."
         	forward-addr: 127.0.0.1@54
+
+#Include the blocklist for ads
+include: "/home/lowpriv_user/blacklist.conf"
 ```
   
-#### Option 2: ODOH via Quad9
+#### Option 2: DOH via Quad9
 ```
 # example config from: https://nurdletech.com/linux-notes/dns/unbound.html
 server:
@@ -265,7 +268,7 @@ server:
 	       forward-addr: 2620:fe::9@853#dns.quad9.net
 	       forward-addr: 149.112.112.112@853#dns.quad9.net
 
- # Include the adblock list
+ # Include the blocklist for ads
 include: "/home/lowpriv_user/blacklist.conf"
 ```
 - in case you still need to generate the key:
@@ -288,7 +291,7 @@ FINAL_IP_FILE="/usr/local/gotten-para"
 MAX_IP_COUNT=3
 IP_RETENTION_DAYS=10
 IP_SET_NAME="dynamic_hosts"
-WG_ZONE="wireguard21"
+WG_ZONE="wireguard0"
 WG_PORT="51820" # Ensure this is set to the correct WireGuard port
 
 # Resolve the current IP address of the FQDN
@@ -462,4 +465,5 @@ unset UNAME
 0 0 * * * /home/lowpriv_user/blocklister.sh
 ```
 
-Thanks for the read, I hope you find it useful in any way. If you have ideas to get this more secure / paranoid in awy way, then I'm happy to listen!
+Thanks for the read, I hope you find it useful in any way. 
+If you have ideas to get this more secure / paranoid in awy way, then I'm happy to listen!
