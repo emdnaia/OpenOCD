@@ -233,7 +233,7 @@ include: "/home/lowpriv_user/blacklist.conf"
 ```
   
 #### Option 2: DOT via Quad9
-- We use Unbound for DOH and skip dnscrypt, the config is at ` /var/unbound/etc/unbound.conf `
+- We use Unbound for DoT and can skip dnscrypt, the config is at ` /var/unbound/etc/unbound.conf `
 ```
 # example config from: https://nurdletech.com/linux-notes/dns/unbound.html
 server:
