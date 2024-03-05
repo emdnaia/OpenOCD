@@ -38,9 +38,6 @@ This project helps you get the following: All my config files for 1)  only allow
 - You edit the pf rules on ` /etc/pf.conf ` and check via  `pfctl -nf /etc/pf.conf` and  load them via  `pfctl -f  /etc/pf.conf`
 
 ```
-2. **PF Configuration Template (`pf.conf`)**
-
-```pf
 # $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
 #
 # See pf.conf(5) and /etc/examples/pf.conf
