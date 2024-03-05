@@ -24,7 +24,7 @@ This project gets you:
 
 - **Cron Jobs**: Automates system updates, VPN renewals, and the dynamic IP update script.
 
-- **DNS Configuration**: Setup guides for DoH and ODoH, including configuration changes for `dnscrypt-proxy`.
+- **DNS Configuration**: Setup guides for DoT and ODoH, including configuration changes for `dnscrypt-proxy`.
 
 - **Ad Blocker Script**: Instructions and script for setting up ad blocking on OpenBSD using Unbound.
 
