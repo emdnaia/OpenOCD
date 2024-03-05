@@ -233,6 +233,7 @@ include: "/home/lowpriv_user/blacklist.conf"
 ```
   
 #### Option 2: DOT via Quad9
+- We use Unbound for DOH and skip dnscrypt, the config is at ` /var/unbound/etc/unbound.conf `
 ```
 # example config from: https://nurdletech.com/linux-notes/dns/unbound.html
 server:
@@ -271,7 +272,7 @@ server:
  # Include the blocklist for ads
 include: "/home/lowpriv_user/blacklist.conf"
 ```
-- in case you still need to generate the key:
+- In case you still need to generate the key:
 ```
 unbound-anchor -a /var/unbound/db/root.key
 ```
@@ -333,7 +334,7 @@ firewall-cmd --reload
 
 echo "Firewalld IP set updated with latest IPs."
 ```
-- We additionally add the dynamic hosts via `\usr\local\updatepara.sh`
+- We additionally add the dynamic hosts via `/usr/local/updatepara.sh`
 
 ```
 # Define the WireGuard zone and port variables
