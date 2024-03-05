@@ -172,7 +172,7 @@ PersistentKeepalive = 15
 - For this just follow the guide from SwaroopGiri: (https://github.com/SwaroopGiri/Pihole-with-Anonymized-ODOH)
 - We need to work with dnscrypt for this, and set it to be running on 127.0.0.1@54, which unbound will just forward requests to (and itself be listening on 53, only allowing getting access from Wireguard clients):
 
-- Add dnscrypt proxy
+- Here is how you add the dnscrypt proxy package and check paths, plus how to do restarts and enabling of it
 ```
 pkg_add dnscrypt-proxy
 pkg_info -L dnscrypt-proxy
