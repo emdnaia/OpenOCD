@@ -177,8 +177,8 @@ PersistentKeepalive = 15
   
 ### Optional DNS 
 #### Option 1: ODOH via Cloudflare
-- Goal: First configure `/etc/dnscrypt-proxy.toml`
-- Now use the guide from SwaroopGiri: (https://github.com/SwaroopGiri/Pihole-with-Anonymized-ODOH)
+- You work on `/etc/dnscrypt-proxy.toml`
+- Use the Guide from here:  SwaroopGiri: (https://github.com/SwaroopGiri/Pihole-with-Anonymized-ODOH)
 - The DNScrypt runs at 127.0.0.1@54, which unbound will just forward requests to (and itself be listening on 53, only allowing getting access from Wireguard clients):
 
 - Here is how you add the dnscrypt proxy package and check paths, plus how to do restarts and enabling of it
