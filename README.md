@@ -278,7 +278,7 @@ unbound-anchor -a /var/unbound/db/root.key
 
 #### Optional Linux side for dynamic IP adding
 
-- Here is the same  `\usr\local\getpara.sh` but adjusted for Linux:
+- Here is the same  `/usr/local/getpara.sh` but adjusted for Linux:
 ```
 #!/bin/bash
 
