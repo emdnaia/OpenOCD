@@ -137,7 +137,7 @@ pfctl -t dynamic_hosts -T replace -f "$FINAL_IP_FILE" && echo "pf table reloaded
 ```
 ### Wireguards
 
-- After you installed the package via `pkg_add wireguard-tools`,your gateways `wg0.conf` looks like this on `\etc\wireguard\wg0.conf`and you can trigger restarts for the interface like `wg-quick down wg0 && sleep 5 && wg-quick up wg0`.
+- After you installed the package via `pkg_add wireguard-tools`,your gateways `wg0.conf` looks like this on `/etc/wireguard/wg0.conf`and you can trigger restarts for the interface like `wg-quick down wg0 && sleep 5 && wg-quick up wg0`.
 - You generate client priv and pub keys via ` sh -c 'umask 077; wg genkey | tee privatekey | wg pubkey > publickey'`
 - You can have your entire infrastructure within nested wireguards, increasing trust per interface
 
