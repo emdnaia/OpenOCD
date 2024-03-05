@@ -5,7 +5,7 @@ This project gets you:
 - OpenBSD: Static filtering of static IPs for SSH
 - OpenBSD: Dynamic filtering of dynamic IPs for VPN (Wireguard)
 - Linux: Dynamic filtering of dynamic IPs for VPN (Wireguard)
-- OpenBSD: Encrypted DNS via ODOH / DOT via Unbound + DNScrypt
+- OpenBSD: Encrypted DNS via ODoH / DoT via Unbound + DNScrypt
 - OpenBSD: Adblocker skript to pull adlists for Unbound
 
 ### Some steps
