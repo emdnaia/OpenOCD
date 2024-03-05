@@ -474,4 +474,4 @@ unset UNAME
 ```
 0 0 * * * /home/lowpriv_user/blocklister.sh
 ```
-Much love if you read until here, if you can scale the idea of this and make the world safer vs 0 days, please do it!
+Much love if you read until here
