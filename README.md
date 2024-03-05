@@ -466,4 +466,4 @@ unset UNAME
 ```
 
 Thanks for the read, I hope you find it useful in any way. 
-If you have ideas to get this more secure / paranoid in awy way, then I'm happy to listen!
+If you have ideas to get this more secure / paranoid in any way, then I'm happy to listen!
