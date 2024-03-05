@@ -13,7 +13,7 @@ This project gets you:
 1. **Initial Setup:** Start by configuring the OpenBSD gateway with the provided PF configuration to set up initial firewall rules.
 2. **Dynamic IP Script:** Implement the dynamic IP update script to maintain an up-to-date whitelist of IPs that can access the VPN.
 3. **Cron Configuration:** Schedule the provided cron jobs to automate the updating and maintenance tasks.
-4. **DNS Encryption:** Follow the DNS setup instructions to encrypt DNS queries, using either DoH or ODoH.
+4. **DNS Encryption:** Follow the DNS setup instructions to encrypt DNS queries, using either DoT or ODoH.
 5. **Ad Blocking:** Set up the ad blocker script to filter out unwanted ads.
 
 ### Detailed Configuration Scripts and Commands
