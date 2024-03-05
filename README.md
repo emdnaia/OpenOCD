@@ -1,6 +1,6 @@
 # OpenOCD
 
-This project helps you get the following: All my config files for 1)  only allowing whitelisted IPs to connect to gateways 2) only allowing clients whose IPs are resolved to FQDNs to get added to the firewall dynamically to access the VPNs 3) Encrypted DNS via DOH / ODoH 4) An addblocker for the DNS. 
+This project helps you get the following: All my config files for 1)  only allowing whitelisted IPs to connect to gateways 2) only allowing clients whose IPs are resolved to FQDNs to get added to the firewall dynamically to access the VPNs 3) Encrypted DNS via ODOH / DOT 4) An addblocker for the DNS. 
 
 1. **Initial Setup:** Start by configuring the OpenBSD gateway with the provided PF configuration to set up initial firewall rules.
 2. **Dynamic IP Script:** Implement the dynamic IP update script to maintain an up-to-date whitelist of IPs that can access the VPN.
