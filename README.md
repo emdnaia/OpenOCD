@@ -22,7 +22,7 @@ This project gets you:
   
 - **PF Configuration (`pf.conf`)**: Includes rules for blocking, allowing SSH from specific IPs, handling Wireguard traffic, and default deny policies.
 
-- **Cron Jobs**: Automates system updates, VPN renewals, and the dynamic IP update script.
+- **Cron Jobs**: Automates system updates, VPN renewals, and the dynamic IP update script. If on the go, reduce the cronjob size to refreshing every 2-5 minutes on `getpara.sh`, like this you can unlock a laptop on a hotspot in a train. The laptop would only need a dynamic dns client unlocking the public IP, which is also set to a maximum number kicking off the older ones.
 
 - **DNS Configuration**: Setup guides for DoT and ODoH, including configuration changes for `dnscrypt-proxy`.
 
@@ -89,7 +89,7 @@ block return out log proto {tcp udp} user _pbuild
 
 ### Skript to add the dynamic hosts
 - Important: All your clients will need to get FQDNs, and you can do that by adding for example containers in your home, work etc, that use tools like `ddclient` + any DYNDNS-hoster.
-- Next, *Ensure you replace `myhost.myhoster.org` with your actual domain domain.*
+- Next, *Ensure you replace `hoster1 + hoster2` with your actual domains to allow dynamic access from.*
 - The script below will access the FQDN and add it to the firewall ruletable for access.
 
 I've deployed the following script on `/usr/local/getpara.sh` it creates `temp_gotten_para` as well as `gotten-para` which contains the dynamic IPs to be added to the firewall for access.
@@ -97,29 +97,37 @@ I've deployed the following script on `/usr/local/getpara.sh` it creates `temp_g
 ```sh
 #!/bin/sh
 
-# FQDN to resolve
-FQDN="myhost.myhoster.org"
+# FQDNs to resolve
+FQDN1="myhost1.hoster1.org"
+FQDN2="myhost2.hoster2.org"
 
 # Variables
 TEMP_IP_FILE="/usr/local/temp_gotten_para"
 FINAL_IP_FILE="/usr/local/gotten-para"
-MAX_IP_COUNT=3
-IP_RETENTION_DAYS=10
+MAX_IP_COUNT=3  # Adjusted if needed to allow more IPs
+IP_RETENTION_DAYS=7
 
-# Resolve the current IP address of the FQDN
-CURRENT_IP=$(dig +short $FQDN)
-CURRENT_TIMESTAMP=$(date +%s)
+resolve_ip() {
+    local FQDN=$1
+    # Resolve the current IP address of the FQDN
+    CURRENT_IP=$(dig +short $FQDN)
+    CURRENT_TIMESTAMP=$(date +%s)
+
+    # Exit if no IP is resolved
+    [ -z "$CURRENT_IP" ] && echo "No IP address found for $FQDN" && return
+
+    # Append current IP with timestamp to TEMP_IP_FILE for processing
+    echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+}
 
 # Ensure FINAL_IP_FILE exists
 if [ ! -f "$FINAL_IP_FILE" ]; then
     touch "$FINAL_IP_FILE"
 fi
 
-# Exit if no IP is resolved
-[ -z "$CURRENT_IP" ] && echo "No IP address found for $FQDN" && exit 1
-
-# Append current IP with timestamp to TEMP_IP_FILE for processing
-echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+# Resolve IPs for both FQDNs
+resolve_ip $FQDN1
+resolve_ip $FQDN2
 
 # Process TEMP_IP_FILE to ensure uniqueness, limit the number of IPs, and consider the retention period
 awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$CURRENT_TIMESTAMP '{
@@ -133,7 +141,6 @@ awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_t
 
 # Reload the PF table with the updated IP list
 pfctl -t dynamic_hosts -T replace -f "$FINAL_IP_FILE" && echo "pf table reloaded with updated IP list."
-
 ```
 ### Wireguards
 
@@ -292,32 +299,44 @@ unbound-anchor -a /var/unbound/db/root.key
 ```
 #!/bin/bash
 
-# FQDN to resolve
-FQDN="myhost.duckdns.org"
+# FQDNs to resolve
+FQDN1="myhost1.myhoster1.org"
+FQDN2="myhost2.myhoster2.org"
 
 # Variables
 TEMP_IP_FILE="/usr/local/temp_gotten_para"
 FINAL_IP_FILE="/usr/local/gotten-para"
-MAX_IP_COUNT=3
-IP_RETENTION_DAYS=10
+MAX_IP_COUNT=6  # Adjust if needed to allow more IPs
+IP_RETENTION_DAYS=7
 IP_SET_NAME="dynamic_hosts"
 WG_ZONE="wireguard0"
-WG_PORT="51820" # Ensure this is set to the correct WireGuard port
+WG_PORT="51820"  # Ensure this is set to the correct WireGuard port
 
-# Resolve the current IP address of the FQDN
-CURRENT_IP=$(dig +short $FQDN)
-CURRENT_TIMESTAMP=$(date +%s)
+# Function to resolve IP address and check its validity
+resolve_ip() {
+    local FQDN=$1
+    # Resolve the current IP address of the FQDN, filtering for valid IPv4 addresses
+    CURRENT_IP=$(dig +short $FQDN | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    CURRENT_TIMESTAMP=$(date +%s)
+
+    # Skip if no valid IP is resolved
+    if [ -z "$CURRENT_IP" ]; then
+        echo "No valid IP address found for $FQDN"
+        return
+    fi
+
+    # Append current IP with timestamp to TEMP_IP_FILE for processing
+    echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+}
 
 # Ensure FINAL_IP_FILE exists
 if [ ! -f "$FINAL_IP_FILE" ]; then
     touch "$FINAL_IP_FILE"
 fi
 
-# Exit if no IP is resolved
-[ -z "$CURRENT_IP" ] && echo "No IP address found for $FQDN" && exit 1
-
-# Append current IP with timestamp to TEMP_IP_FILE for processing
-echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+# Resolve IPs for both FQDNs
+resolve_ip $FQDN1
+resolve_ip $FQDN2
 
 # Process TEMP_IP_FILE to ensure uniqueness, limit the number of IPs, and consider the retention period
 awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$CURRENT_TIMESTAMP '{
@@ -329,15 +348,19 @@ awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_t
     }
 }' "$TEMP_IP_FILE" | sort -u | tail -n $MAX_IP_COUNT > "$FINAL_IP_FILE"
 
-# Check if the IP set exists and delete it if it does
-if firewall-cmd --permanent --get-ipsets | grep -qw "$IP_SET_NAME"; then
-    firewall-cmd --permanent --delete-ipset=$IP_SET_NAME
-fi
-
-# Create the IP set anew and populate it with the latest IPs
+# Update the firewalld IP set with the latest IPs
+firewall-cmd --permanent --delete-ipset=$IP_SET_NAME 2>/dev/null
 firewall-cmd --permanent --new-ipset=$IP_SET_NAME --type=hash:ip
-while read -r ip; do
-  firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry="$ip"
+
+# Regular expression to validate IP addresses
+ip_regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+
+while IFS= read -r ip; do
+  if [[ $ip =~ $ip_regex ]]; then
+    firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry="$ip"
+  else
+    echo "Skipping invalid IP address: $ip"
+  fi
 done < "$FINAL_IP_FILE"
 firewall-cmd --reload
 
