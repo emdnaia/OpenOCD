@@ -97,31 +97,54 @@ I've deployed the following script on `/usr/local/getpara.sh` it creates `temp_g
 ```sh
 #!/bin/sh
 
-# FQDNs to resolve
+# FQDNs
 FQDN1="myhost1.hoster1.org"
 FQDN2="myhost2.hoster2.org"
 
 # Variables
-TEMP_IP_FILE="/usr/local/temp_gotten_para"
-FINAL_IP_FILE="/usr/local/gotten-para"
+WORK_DIR="/usr/local"
+TEMP_IP_FILE="$WORK_DIR/temp_gotten_para"
+FINAL_IP_FILE="$WORK_DIR/gotten-para"
+LOG_FILE="$WORK_DIR/firewall_update.log"
+
 MAX_IP_COUNT=3  # Adjusted if needed to allow more IPs
 IP_RETENTION_DAYS=7
 
+# Setup and cleanup environment
+if [ ! -f "$TEMP_IP_FILE" ]; then
+    echo "Creating $TEMP_IP_FILE as it does not exist."
+    touch "$TEMP_IP_FILE"
+fi
+
+# Function to log messages with timestamps
+log() {
+    echo "$(date "+%Y-%m-%d %H:%M:%S") - $1" >> "$LOG_FILE"
+}
+
+# Function to resolve IP addresses and avoid duplicates
 resolve_ip() {
     local FQDN=$1
+    log "Resolving IP address for $FQDN"
     # Resolve the current IP address of the FQDN
     CURRENT_IP=$(dig +short $FQDN)
     CURRENT_TIMESTAMP=$(date +%s)
 
     # Exit if no IP is resolved
-    [ -z "$CURRENT_IP" ] && echo "No IP address found for $FQDN" && return
+    [ -z "$CURRENT_IP" ] && log "No IP address found for $FQDN" && return
 
-    # Append current IP with timestamp to TEMP_IP_FILE for processing
-    echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+    # Check if the IP already exists in the TEMP_IP_FILE to avoid duplicates
+    if ! grep -q "$CURRENT_IP" "$TEMP_IP_FILE"; then
+        # Append current IP with timestamp to TEMP_IP_FILE for processing
+        echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+        log "Added IP $CURRENT_IP to $TEMP_IP_FILE"
+    else
+        log "IP $CURRENT_IP already exists in $TEMP_IP_FILE, not adding again."
+    fi
 }
 
 # Ensure FINAL_IP_FILE exists
 if [ ! -f "$FINAL_IP_FILE" ]; then
+    echo "Creating $FINAL_IP_FILE as it does not exist."
     touch "$FINAL_IP_FILE"
 fi
 
@@ -130,17 +153,40 @@ resolve_ip $FQDN1
 resolve_ip $FQDN2
 
 # Process TEMP_IP_FILE to ensure uniqueness, limit the number of IPs, and consider the retention period
-awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$CURRENT_TIMESTAMP '{
-    ip = $2
+log "Processing $TEMP_IP_FILE to update $FINAL_IP_FILE"
+awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$(date +%s) '{
     timestamp = $1
+    ip = $2
     if (!seen[ip]++ && (current_time - timestamp) <= (retention_days * 86400)) {
         print ip
         if (++count >= max_count) exit
     }
 }' "$TEMP_IP_FILE" | sort -u | tail -n $MAX_IP_COUNT > "$FINAL_IP_FILE"
 
-# Reload the PF table with the updated IP list
-pfctl -t dynamic_hosts -T replace -f "$FINAL_IP_FILE" && echo "pf table reloaded with updated IP list."
+# Cleanup old entries from TEMP_IP_FILE
+log "Cleaning up old entries from $TEMP_IP_FILE"
+awk -v current_time=$(date +%s) -v retention_days=$IP_RETENTION_DAYS '{
+    timestamp = $1
+    if ((current_time - timestamp) <= (retention_days * 86400)) {
+        print $0
+    }
+}' "$TEMP_IP_FILE" > "${TEMP_IP_FILE}.tmp" && mv "${TEMP_IP_FILE}.tmp" "$TEMP_IP_FILE"
+
+# Check if there are any changes
+if [ "$(wc -l < "$FINAL_IP_FILE")" -eq 0 ]; then
+    log "No changes."
+else
+    # Reload the PF table with the updated IP list
+    log "Reloading PF table 'dynamic_hosts' with updated IP list from $FINAL_IP_FILE"
+    pfctl -t dynamic_hosts -T replace -f "$FINAL_IP_FILE" && log "PF table 'dynamic_hosts' reloaded with updated IP list."
+
+    # Output the contents of the PF table
+    log "Contents of PF table 'dynamic_hosts':"
+    pfctl -t dynamic_hosts -T show >> "$LOG_FILE"
+fi
+
+# Log completion message
+log "Firewall update complete."
 ```
 ### Wireguards
 
@@ -299,47 +345,85 @@ unbound-anchor -a /var/unbound/db/root.key
 ```
 #!/bin/bash
 
-# FQDNs to resolve
+# FQDNs
 FQDN1="myhost1.myhoster1.org"
 FQDN2="myhost2.myhoster2.org"
 
 # Variables
-TEMP_IP_FILE="/usr/local/temp_gotten_para"
-FINAL_IP_FILE="/usr/local/gotten-para"
-MAX_IP_COUNT=6  # Adjust if needed to allow more IPs
+# Directory for log and temporary files
+WORK_DIR="/usr/local"
+TEMP_IP_FILE="$WORK_DIR/temp_gotten_para"
+FINAL_IP_FILE="$WORK_DIR/gotten-para"
+LOG_FILE="$WORK_DIR/firewall_update.log"
+
+MAX_IP_COUNT=3  # Adjust if needed to allow more IPs
 IP_RETENTION_DAYS=7
 IP_SET_NAME="dynamic_hosts"
+
 WG_ZONE="wireguard0"
 WG_PORT="51820"  # Ensure this is set to the correct WireGuard port
 
-# Function to resolve IP address and check its validity
+# Setup and cleanup environment
+> "$TEMP_IP_FILE"  # Clear temporary file
+> "$FINAL_IP_FILE"  # Clear final IP file
+touch "$LOG_FILE"  # Ensure log file exists
+exec 3>&1 1>>"$LOG_FILE" 2>&1  # Redirect stdout and stderr to log file
+
+# Function to log messages with timestamps
+log() {
+    echo "$(date "+%Y-%m-%d %H:%M:%S") - $1"
+}
+
+# Function to execute commands and log their output
+execute_command() {
+    local command="$1"
+    echo "Executing command: $command" >&3  # Log command to LOG_FILE
+    eval $command
+    local status=$?
+    if [ $status -ne 0 ]; then
+        log "ERROR: Failed to execute: $command"
+        exit $status
+    else
+        log "SUCCESS: Executed: $command"
+    fi
+}
+
+# Function to ensure files exist
+ensure_files_exist() {
+    touch "$1" 2>/dev/null || {
+        log "Failed to touch $1. Check permissions."
+        exit 1
+    }
+}
+
+# Ensure temporary and final IP files exist
+ensure_files_exist "$TEMP_IP_FILE"
+ensure_files_exist "$FINAL_IP_FILE"
+
 resolve_ip() {
     local FQDN=$1
-    # Resolve the current IP address of the FQDN, filtering for valid IPv4 addresses
-    CURRENT_IP=$(dig +short $FQDN | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}$')
-    CURRENT_TIMESTAMP=$(date +%s)
+    local CURRENT_IP=$(dig +short $FQDN | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    local CURRENT_TIMESTAMP=$(date +%s)
 
-    # Skip if no valid IP is resolved
     if [ -z "$CURRENT_IP" ]; then
-        echo "No valid IP address found for $FQDN"
+        log "No valid IP address found for $FQDN"
         return
     fi
 
-    # Append current IP with timestamp to TEMP_IP_FILE for processing
-    echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+    # Check if the same IP with the same timestamp already exists
+    if ! grep -q "$CURRENT_TIMESTAMP $CURRENT_IP" "$TEMP_IP_FILE"; then
+        echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+    else
+        log "Duplicate IP entry for $CURRENT_IP at $CURRENT_TIMESTAMP skipped"
+    fi
 }
-
-# Ensure FINAL_IP_FILE exists
-if [ ! -f "$FINAL_IP_FILE" ]; then
-    touch "$FINAL_IP_FILE"
-fi
 
 # Resolve IPs for both FQDNs
 resolve_ip $FQDN1
 resolve_ip $FQDN2
 
 # Process TEMP_IP_FILE to ensure uniqueness, limit the number of IPs, and consider the retention period
-awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$CURRENT_TIMESTAMP '{
+awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$(date +%s) '{
     ip = $2
     timestamp = $1
     if (!seen[ip]++ && (current_time - timestamp) <= (retention_days * 86400)) {
@@ -348,36 +432,41 @@ awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_t
     }
 }' "$TEMP_IP_FILE" | sort -u | tail -n $MAX_IP_COUNT > "$FINAL_IP_FILE"
 
-# Update the firewalld IP set with the latest IPs
-firewall-cmd --permanent --delete-ipset=$IP_SET_NAME 2>/dev/null
-firewall-cmd --permanent --new-ipset=$IP_SET_NAME --type=hash:ip
+# Log current IPs before deletion
+log "Current IP set entries before deletion:"
+firewall-cmd --ipset=$IP_SET_NAME --get-entries >> "$LOG_FILE"
 
-# Regular expression to validate IP addresses
-ip_regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+# Update the firewalld IP set
+log "Deleting and recreating IP set"
+execute_command "firewall-cmd --permanent --delete-ipset=$IP_SET_NAME 2>/dev/null"
+execute_command "firewall-cmd --permanent --new-ipset=$IP_SET_NAME --type=hash:ip"
 
-while IFS= read -r ip; do
-  if [[ $ip =~ $ip_regex ]]; then
-    firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry="$ip"
-  else
-    echo "Skipping invalid IP address: $ip"
-  fi
-done < "$FINAL_IP_FILE"
-firewall-cmd --reload
+# Re-load current IPs after changes
+mapfile -t current_ips < <(firewall-cmd --ipset=$IP_SET_NAME --get-entries)
 
-echo "Firewalld IP set updated with latest IPs."
-```
-- We additionally add the dynamic hosts via `/usr/local/updatepara.sh`
+# Add new IPs
+log "Adding IPs to the new IP set"
+for ip in $(cat "$FINAL_IP_FILE"); do
+    if [[ ! " ${current_ips[*]} " =~ " ${ip} " ]]; then
+        execute_command "firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry=$ip"
+    fi
+done
 
-```
-# Define the WireGuard zone and port variables
-WG_ZONE="public"
-WG_PORT="51820"
+# Update WireGuard rules
+log "Updating WireGuard rules"
+if ! firewall-cmd --permanent --zone=$WG_ZONE --query-rich-rule="rule family='ipv4' source ipset='$IP_SET_NAME' port port='$WG_PORT' protocol='udp' accept"; then
+    execute_command "firewall-cmd --permanent --zone=$WG_ZONE --add-rich-rule='rule family=\"ipv4\" source ipset=\"$IP_SET_NAME\" port port=\"$WG_PORT\" protocol=\"udp\" accept'"
+fi
 
-# Add the rich rule with expanded variables
-sudo firewall-cmd --permanent --zone=$WG_ZONE --add-rich-rule="rule family=\"ipv4\" source ipset=\"dynamic_hosts\" port port=\"$WG_PORT\" protocol=\"udp\" accept"
-sudo firewall-cmd --reload
+# Reload firewall to apply changes
+execute_command "firewall-cmd --reload"
 
-echo "Rich rule added to $WG_ZONE zone for WireGuard access on port $WG_PORT."
+log "Firewall and WireGuard rules updated with latest IPs."
+
+# Cleanup and close logging
+exec 1>&3 3>&-
+
+echo "Firewall update complete. See $LOG_FILE for details."
 ```
 - In case we wanna confirm para entries:
 ```
