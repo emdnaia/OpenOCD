@@ -357,11 +357,10 @@ FINAL_IP_FILE="$WORK_DIR/gotten-para"
 LOG_FILE="$WORK_DIR/firewall_update.log"
 
 MAX_IP_COUNT=3  # Adjust if needed to allow more IPs
-IP_RETENTION_DAYS=7
+IP_RETENTION_DAYS=6
 IP_SET_NAME="dynamic_hosts"
-
-WG_ZONE="wireguard0"
-WG_PORT="51820"  # Ensure this is set to the correct WireGuard port
+WG_ZONES=("wireguard0" "public")  # List of WireGuard zones
+WG_PORT="51820"  # WireGuard port, adjust as needed
 
 # Setup and cleanup environment
 > "$TEMP_IP_FILE"  # Clear temporary file
@@ -452,11 +451,14 @@ for ip in $(cat "$FINAL_IP_FILE"); do
     fi
 done
 
-# Update WireGuard rules
-log "Updating WireGuard rules"
-if ! firewall-cmd --permanent --zone=$WG_ZONE --query-rich-rule="rule family='ipv4' source ipset='$IP_SET_NAME' port port='$WG_PORT' protocol='udp' accept"; then
-    execute_command "firewall-cmd --permanent --zone=$WG_ZONE --add-rich-rule='rule family=\"ipv4\" source ipset=\"$IP_SET_NAME\" port port=\"$WG_PORT\" protocol=\"udp\" accept'"
-fi
+# Update WireGuard rules for each zone
+for zone in "${WG_ZONES[@]}"; do
+    log "Updating WireGuard rules for zone: $zone"
+    # Check if the rule already exists in the zone
+    if ! firewall-cmd --permanent --zone="$zone" --query-rich-rule="rule family='ipv4' source ipset='$IP_SET_NAME' port port='$WG_PORT' protocol='udp' accept"; then
+        execute_command "firewall-cmd --permanent --zone=$zone --add-rich-rule='rule family=\"ipv4\" source ipset=\"$IP_SET_NAME\" port port=\"$WG_PORT\" protocol=\"udp\" accept'"
+    fi
+done
 
 # Reload firewall to apply changes
 execute_command "firewall-cmd --reload"
