@@ -373,17 +373,16 @@ log() {
     echo "$(date "+%Y-%m-%d %H:%M:%S") - $1"
 }
 
-# Function to execute commands and log their output
+# Function to execute commands and log their output without using eval
 execute_command() {
-    local command="$1"
-    echo "Executing command: $command" >&3  # Log command to LOG_FILE
-    eval $command
+    echo "Executing command: ${*}" >&3  # Log command to LOG_FILE
+    "${@}"
     local status=$?
     if [ $status -ne 0 ]; then
-        log "ERROR: Failed to execute: $command"
+        log "ERROR: Failed to execute: ${*}"
         exit $status
     else
-        log "SUCCESS: Executed: $command"
+        log "SUCCESS: Executed: ${*}"
     fi
 }
 
@@ -437,8 +436,8 @@ firewall-cmd --ipset=$IP_SET_NAME --get-entries >> "$LOG_FILE"
 
 # Update the firewalld IP set
 log "Deleting and recreating IP set"
-execute_command "firewall-cmd --permanent --delete-ipset=$IP_SET_NAME 2>/dev/null"
-execute_command "firewall-cmd --permanent --new-ipset=$IP_SET_NAME --type=hash:ip"
+execute_command firewall-cmd --permanent --delete-ipset=$IP_SET_NAME 2>/dev/null
+execute_command firewall-cmd --permanent --new-ipset=$IP_SET_NAME --type=hash:ip
 
 # Re-load current IPs after changes
 mapfile -t current_ips < <(firewall-cmd --ipset=$IP_SET_NAME --get-entries)
@@ -447,21 +446,20 @@ mapfile -t current_ips < <(firewall-cmd --ipset=$IP_SET_NAME --get-entries)
 log "Adding IPs to the new IP set"
 for ip in $(cat "$FINAL_IP_FILE"); do
     if [[ ! " ${current_ips[*]} " =~ " ${ip} " ]]; then
-        execute_command "firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry=$ip"
+        execute_command firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry=$ip
     fi
 done
 
 # Update WireGuard rules for each zone
 for zone in "${WG_ZONES[@]}"; do
     log "Updating WireGuard rules for zone: $zone"
-    # Check if the rule already exists in the zone
     if ! firewall-cmd --permanent --zone="$zone" --query-rich-rule="rule family='ipv4' source ipset='$IP_SET_NAME' port port='$WG_PORT' protocol='udp' accept"; then
-        execute_command "firewall-cmd --permanent --zone=$zone --add-rich-rule='rule family=\"ipv4\" source ipset=\"$IP_SET_NAME\" port port=\"$WG_PORT\" protocol=\"udp\" accept'"
+        execute_command firewall-cmd --permanent --zone="$zone" --add-rich-rule="rule family='ipv4' source ipset='$IP_SET_NAME' port port='$WG_PORT' protocol='udp' accept"
     fi
 done
 
 # Reload firewall to apply changes
-execute_command "firewall-cmd --reload"
+execute_command firewall-cmd --reload
 
 log "Firewall and WireGuard rules updated with latest IPs."
 
