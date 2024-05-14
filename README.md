@@ -33,12 +33,14 @@ This project gets you:
 ```
 @reboot /bin/sleep 30 && /usr/local/bin/wg-quick up wg0
 @reboot /bin/sleep 30 && /usr/sbin/rcctl restart unbound
+
 30 13 * * * /usr/sbin/syspatch -c 
 32 13 * * * /usr/sbin/syspatch
 35 13 * * * /usr/sbin/pkg_add -u
 
-30 4 * * 3 /usr/local/getpara.sh
-0 0 * * * /usr/local/getpara.sh
+@reboot /bin/sleep 30 && /usr/local/getpara.sh
+0 0,12 * * * /usr/local/getpara.sh
+
 2 0 * * * /usr/sbin/rcctl restart unbound
 ```
 ### Firewall: OpenBSD PF rules for static & dynamic ips
@@ -476,10 +478,10 @@ firewall-cmd --ipset=dynamic_hosts --get-entries
 ```
 firewall-cmd --ipset=dynamic_hosts --get-entries | xargs -I{} firewall-cmd --permanent --ipset=dynamic_hosts --remove-entry={} && firewall-cmd --reload
 ```
-- We need to also add this to the cronjob of the Linux server, for example daily:
+- We need to also add this to the cronjob of the Linux server, for example on reboot and 12 hours:
 ```
-0 0 * * * /usr/local/getpara.sh
-0 0 * * * /usr/local/updatepara.sh
+@reboot /bin/sleep 30 && /usr/local/getpara.sh
+0 0,12 * * * /usr/local/getpara.sh
 ```
 
 #### Optional Addblocking
