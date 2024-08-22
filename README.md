@@ -103,14 +103,13 @@ I've deployed the following script on `/usr/local/getpara.sh` it creates `temp_g
 FQDN1="myhost1.hoster1.org"
 FQDN2="myhost2.hoster2.org"
 
-# Variables
+# Define variables
 WORK_DIR="/usr/local"
 TEMP_IP_FILE="$WORK_DIR/temp_gotten_para"
 FINAL_IP_FILE="$WORK_DIR/gotten-para"
 LOG_FILE="$WORK_DIR/firewall_update.log"
-
-MAX_IP_COUNT=3  # Adjusted if needed to allow more IPs
-IP_RETENTION_DAYS=7
+MAX_IP_COUNT=2  # Adjusted if needed to allow more IPs
+IP_RETENTION_DAYS=2
 
 # Setup and cleanup environment
 if [ ! -f "$TEMP_IP_FILE" ]; then
@@ -123,16 +122,29 @@ log() {
     echo "$(date "+%Y-%m-%d %H:%M:%S") - $1" >> "$LOG_FILE"
 }
 
+# Function to validate an IP address
+is_valid_ip() {
+    local ip=$1
+    if echo "$ip" | grep -Eq "^([0-9]{1,3}\.){3}[0-9]{1,3}$"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # Function to resolve IP addresses and avoid duplicates
 resolve_ip() {
     local FQDN=$1
     log "Resolving IP address for $FQDN"
     # Resolve the current IP address of the FQDN
-    CURRENT_IP=$(dig +short $FQDN)
+    CURRENT_IP=$(dig +short $FQDN | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')
     CURRENT_TIMESTAMP=$(date +%s)
 
-    # Exit if no IP is resolved
-    [ -z "$CURRENT_IP" ] && log "No IP address found for $FQDN" && return
+    # Exit if no valid IP is resolved
+    if [ -z "$CURRENT_IP" ] || ! is_valid_ip "$CURRENT_IP"; then
+        log "No valid IP address found for $FQDN"
+        return
+    fi
 
     # Check if the IP already exists in the TEMP_IP_FILE to avoid duplicates
     if ! grep -q "$CURRENT_IP" "$TEMP_IP_FILE"; then
