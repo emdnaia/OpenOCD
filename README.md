@@ -45,8 +45,8 @@ This project gets you:
 ```
 ### Firewall: OpenBSD PF rules for static & dynamic ips
 
-- You edit the pf rules on ` /etc/pf.conf ` and check via  `pfctl -nf /etc/pf.conf` and  load them via  `pfctl -f  /etc/pf.conf`
-
+- You edit the pf rules on ` /etc/pf.conf ` and check via  `pfctl -nf /etc/pf.conf` and  load them via  `pfctl -f  /etc/pf.conf` | non - webserver example
+- version A (more secure)
 ```
 # $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
 #
@@ -87,6 +87,118 @@ block return in on ! lo0 proto tcp to port 6000:6010
 
 # Port build user does not need network
 block return out log proto {tcp udp} user _pbuild
+```
+
+
+- hypervisor forward example to -> pf firewall filtering forward to -> webserver
+- hypervisor forward via iptables:
+
+```
+## Variables
+real_adapter_name="YOUR_ADAPTER_NAME"  # Replace this with the actual adapter name like eth0 or any placeholder
+backend_server_ip="10.0.0.33"  # New IP instead of 10.9.3.33
+
+## Forward port 443 from the real adapter to backend server on port 443
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $backend_server_ip:443
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $backend_server_ip:443
+
+## Forward port 80 from the real adapter to backend server on port 80
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $backend_server_ip:80
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $backend_server_ip:80
+```
+
+- version B (with webserver): pf then forwards to webserver that can be accessed from dynamic ips + static ips
+- dns is internal and can connect to the vpn
+```
+# $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
+#
+# See pf.conf(5) and /etc/examples/pf.conf
+
+# Configuration Variables
+dynamic_hosts_file="/usr/local/gotten-para"  # Location for dynamic hosts
+wireguard_port="51820"                       # Your WireGuard VPN port
+wireguard_net="10.0.0.0/24"                  # Your WireGuard VPN network
+ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"   # IPs allowed for SSH
+wireguard_iface="wg0"                        # WireGuard interface identifier
+final_backend_server="10.0.0.207"            # Final backend server IP
+internal_dns_server="10.0.0.34"              # Internal DNS server IP
+gateway_server="10.0.0.1"                    # Gateway server IP
+
+# Block IPv6
+block quick inet6
+
+set skip on lo  # Skip loopback interface
+
+# ---- Security Rules ----
+
+# Block all inbound traffic except for explicitly allowed rules
+block in on vio0 all
+
+# Block X11 connections (optional security)
+block return in on ! lo0 proto tcp to port 6000:6010
+
+# Block network access for _pbuild user
+block return out log proto {tcp udp} user _pbuild
+
+# ---- NAT for Outgoing Traffic ----
+
+# NAT outgoing traffic from non-egress networks (LAN/WireGuard)
+match out on egress inet from !(egress:network) to any nat-to (egress:0)
+
+# NAT for outgoing traffic from WireGuard network to external clients
+match out on egress inet from $wireguard_net to any nat-to (egress:0)
+
+# ---- Port Forwarding and Traffic Handling ----
+
+# Allow access to port 80 (HTTP) from dynamic IPs and ssh_allowed_ips, and forward traffic to internal server
+pass in log on vio0 proto tcp from <dynamic_hosts> to any port 80 rdr-to $final_backend_server port 80 keep state
+pass in log on vio0 proto tcp from $ssh_allowed_ips to any port 80 rdr-to $final_backend_server port 80 keep state
+
+# Allow access to port 443 (HTTPS) from dynamic IPs and ssh_allowed_ips, and forward traffic to internal server
+pass in log on vio0 proto tcp from <dynamic_hosts> to any port 443 rdr-to $final_backend_server port 443 keep state
+pass in log on vio0 proto tcp from $ssh_allowed_ips to any port 443 rdr-to $final_backend_server port 443 keep state
+
+# ---- WireGuard-Specific Rules for Internal Traffic ----
+
+# Allow intra-WireGuard traffic (e.g., from WireGuard clients accessing internal server)
+pass in on $wireguard_iface proto tcp from $wireguard_net to $final_backend_server keep state
+pass out on $wireguard_iface proto tcp from $final_backend_server to $wireguard_net keep state
+
+# ---- SSH and DNS Access Rules ----
+
+# Allow SSH from gateway_server
+pass in on vio0 proto tcp from $gateway_server to (vio0) port 22 keep state
+pass out quick on vio0 keep state
+
+# Allow DNS requests from allowed SSH IPs
+pass in on vio0 proto {udp tcp} from $ssh_allowed_ips to any port 53 keep state
+pass out on vio0 proto {udp tcp} from any to any port 53 keep state
+
+# ---- WireGuard-Specific DNS Rules ----
+
+# Allow DNS requests from WireGuard clients (on WireGuard network) to internal DNS server
+pass in on $wireguard_iface proto udp from $internal_dns_server to $wireguard_net port 53 keep state
+pass out on $wireguard_iface proto udp from $wireguard_net to $internal_dns_server port 53 keep state
+
+# ---- WireGuard-Specific Rules for External Access ----
+
+# Only allow WireGuard access from dynamic IPs
+pass in on vio0 proto udp from <dynamic_hosts> to any port $wireguard_port keep state
+pass out on vio0 proto udp from (vio0) port $wireguard_port to <dynamic_hosts> keep state
+
+# Allow DNS server to access WireGuard for traffic
+pass in on vio0 proto udp from $internal_dns_server to (vio0) port $wireguard_port keep state
+pass out on vio0 proto udp from (vio0) port $wireguard_port to $internal_dns_server keep state
+
+# Allow all traffic between WireGuard interface (wg0) and WireGuard network
+pass in on $wireguard_iface from $wireguard_net to any
+pass out on $wireguard_iface from any to $wireguard_net
+
+# ---- Ensure Return Traffic ----
+
+# Ensure return traffic from internal server to WireGuard clients is handled properly
+pass in on $wireguard_iface proto tcp from $final_backend_server to any keep state
+pass out on vio0 proto tcp from $final_backend_server to any keep state
 ```
 
 ### Skript to add the dynamic hosts
