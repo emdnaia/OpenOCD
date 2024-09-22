@@ -472,36 +472,33 @@ unbound-anchor -a /var/unbound/db/root.key
 #!/bin/bash
 
 # FQDNs
-FQDN1="myhost1.myhoster1.org"
-FQDN2="myhost2.myhoster2.org"
+FQDN1="myhost1.mydnsprovider.com"
+FQDN2="myhost2.mydnsprovider.com"
 
 # Variables
-# Directory for log and temporary files
 WORK_DIR="/usr/local"
 TEMP_IP_FILE="$WORK_DIR/temp_gotten_para"
 FINAL_IP_FILE="$WORK_DIR/gotten-para"
 LOG_FILE="$WORK_DIR/firewall_update.log"
 
-MAX_IP_COUNT=3  # Adjust if needed to allow more IPs
-IP_RETENTION_DAYS=6
+MAX_IP_COUNT=2
+IP_RETENTION_DAYS=2
 IP_SET_NAME="dynamic_hosts"
-WG_ZONES=("wireguard0" "public")  # List of WireGuard zones
-WG_PORT="51820"  # WireGuard port, adjust as needed
+PUBLIC_ZONE="public"
+WIREGUARD_PORT="51820"  # WireGuard port for the public interface
 
 # Setup and cleanup environment
-> "$TEMP_IP_FILE"  # Clear temporary file
-> "$FINAL_IP_FILE"  # Clear final IP file
-touch "$LOG_FILE"  # Ensure log file exists
-exec 3>&1 1>>"$LOG_FILE" 2>&1  # Redirect stdout and stderr to log file
+> "$TEMP_IP_FILE"
+> "$FINAL_IP_FILE"
+touch "$LOG_FILE"
+exec 3>&1 1>>"$LOG_FILE" 2>&1
 
-# Function to log messages with timestamps
 log() {
     echo "$(date "+%Y-%m-%d %H:%M:%S") - $1"
 }
 
-# Function to execute commands and log their output without using eval
 execute_command() {
-    echo "Executing command: ${*}" >&3  # Log command to LOG_FILE
+    echo "Executing command: ${*}" >&3
     "${@}"
     local status=$?
     if [ $status -ne 0 ]; then
@@ -512,7 +509,6 @@ execute_command() {
     fi
 }
 
-# Function to ensure files exist
 ensure_files_exist() {
     touch "$1" 2>/dev/null || {
         log "Failed to touch $1. Check permissions."
@@ -520,33 +516,36 @@ ensure_files_exist() {
     }
 }
 
-# Ensure temporary and final IP files exist
 ensure_files_exist "$TEMP_IP_FILE"
 ensure_files_exist "$FINAL_IP_FILE"
 
 resolve_ip() {
     local FQDN=$1
-    local CURRENT_IP=$(dig +short $FQDN | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    local CURRENT_IP=$(dig +short "$FQDN" | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}$')
     local CURRENT_TIMESTAMP=$(date +%s)
 
     if [ -z "$CURRENT_IP" ]; then
         log "No valid IP address found for $FQDN"
-        return
+        return 1
     fi
 
-    # Check if the same IP with the same timestamp already exists
     if ! grep -q "$CURRENT_TIMESTAMP $CURRENT_IP" "$TEMP_IP_FILE"; then
         echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+        log "Added IP $CURRENT_IP to $TEMP_IP_FILE"
     else
         log "Duplicate IP entry for $CURRENT_IP at $CURRENT_TIMESTAMP skipped"
     fi
 }
 
-# Resolve IPs for both FQDNs
-resolve_ip $FQDN1
-resolve_ip $FQDN2
+if ! resolve_ip $FQDN1; then
+    log "Failed to resolve $FQDN1"
+fi
 
-# Process TEMP_IP_FILE to ensure uniqueness, limit the number of IPs, and consider the retention period
+if ! resolve_ip $FQDN2; then
+    log "Failed to resolve $FQDN2"
+fi
+
+log "Processing $TEMP_IP_FILE to update $FINAL_IP_FILE"
 awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$(date +%s) '{
     ip = $2
     timestamp = $1
@@ -556,43 +555,42 @@ awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_t
     }
 }' "$TEMP_IP_FILE" | sort -u | tail -n $MAX_IP_COUNT > "$FINAL_IP_FILE"
 
-# Log current IPs before deletion
-log "Current IP set entries before deletion:"
-firewall-cmd --ipset=$IP_SET_NAME --get-entries >> "$LOG_FILE"
+if [ -s "$FINAL_IP_FILE" ]; then
+    log "Final IP file contains valid entries."
+else
+    log "No valid IPs resolved. Exiting script."
+    exit 0
+fi
 
-# Update the firewalld IP set
-log "Deleting and recreating IP set"
-execute_command firewall-cmd --permanent --delete-ipset=$IP_SET_NAME 2>/dev/null
+log "Current IP set entries before deletion:"
+firewall-cmd --ipset=$IP_SET_NAME --get-entries >> "$LOG_FILE" 2>/dev/null || log "IP set not found."
+
+if firewall-cmd --permanent --get-ipsets | grep -qw "$IP_SET_NAME"; then
+    log "Deleting IP set $IP_SET_NAME"
+    execute_command firewall-cmd --permanent --delete-ipset=$IP_SET_NAME
+else
+    log "IP set $IP_SET_NAME does not exist, creating a new one."
+fi
+
 execute_command firewall-cmd --permanent --new-ipset=$IP_SET_NAME --type=hash:ip
 
-# Re-load current IPs after changes
-mapfile -t current_ips < <(firewall-cmd --ipset=$IP_SET_NAME --get-entries)
-
-# Add new IPs
 log "Adding IPs to the new IP set"
 for ip in $(cat "$FINAL_IP_FILE"); do
-    if [[ ! " ${current_ips[*]} " =~ " ${ip} " ]]; then
-        execute_command firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry=$ip
-    fi
+    execute_command firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry=$ip
 done
 
-# Update WireGuard rules for each zone
-for zone in "${WG_ZONES[@]}"; do
-    log "Updating WireGuard rules for zone: $zone"
-    if ! firewall-cmd --permanent --zone="$zone" --query-rich-rule="rule family='ipv4' source ipset='$IP_SET_NAME' port port='$WG_PORT' protocol='udp' accept"; then
-        execute_command firewall-cmd --permanent --zone="$zone" --add-rich-rule="rule family='ipv4' source ipset='$IP_SET_NAME' port port='$WG_PORT' protocol='udp' accept"
-    fi
-done
+log "Enabling WireGuard service in the public zone"
+if ! firewall-cmd --permanent --zone="$PUBLIC_ZONE" --query-port="$WIREGUARD_PORT"/udp; then
+    execute_command firewall-cmd --permanent --zone="$PUBLIC_ZONE" --add-port="$WIREGUARD_PORT"/udp
+fi
 
-# Reload firewall to apply changes
 execute_command firewall-cmd --reload
 
 log "Firewall and WireGuard rules updated with latest IPs."
 
-# Cleanup and close logging
 exec 1>&3 3>&-
-
 echo "Firewall update complete. See $LOG_FILE for details."
+
 ```
 - In case we wanna confirm para entries:
 ```
