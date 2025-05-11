@@ -1,7 +1,7 @@
 #############################################################################
 # /etc/nixos/hardening.nix  – “paranoid” desktop bundle (Graphene malloc)   #
 #############################################################################
-# inspired by cynicsketch/nix-mineral
+# inspired by cynicsketch/nix-mineral 
 
 { pkgs, lib, ... }:
 
@@ -25,7 +25,7 @@ in
     # ── already present ────────────────────────────────────────────────────
     "fs.protected_fifos"               = 2;
     "fs.protected_regular"             = 2;
-    "kernel.unprivileged_bpf_disabled" = 1;   # ⇐ flip to 2 for “no unpriv-bpf, ever”
+    "kernel.unprivileged_bpf_disabled" = 2;   
     "kernel.perf_event_paranoid"       = 3;
     "kernel.yama.ptrace_scope"         = 3;
     "vm.mmap_rnd_bits"                 = 32;
