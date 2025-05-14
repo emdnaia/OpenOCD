@@ -51,13 +51,14 @@ in
     "kernel.ctrl-alt-del"               = 0;
     "net.core.bpf_jit_enable"           = 0;   
 
-    ## ── TODO: **testable new parameters** (now UN-commented) ─────────────
-    #   Remove or change the value if any of these break a specific workload
-    "kernel.unprivileged_userns_clone"  = 0;   # kill unpriv user-ns
-    "user.max_user_namespaces"          = 0;
+   # + those 2 settings will be breaking flatpaks
+   # "kernel.unprivileged_userns_clone"  = 0;   # kill unpriv user-ns
+   # "user.max_user_namespaces"          = 0;
+   # +- those 2 settings will be breaking flatpaks
+
     "fs.suid_dumpable"                  = 0;   # never write core dumps
     "kernel.core_pattern"               = "|/bin/false";
-#    "kernel.random.trust_cpu"           = 0;   # distrust CPU-built RNG
+  # "kernel.random.trust_cpu"           = 0;   # distrust CPU-built RNG
     "vm.panic_on_oom"                   = 1;   # fail hard on OOM
 
 
