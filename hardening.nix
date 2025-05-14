@@ -1,28 +1,29 @@
 #############################################################################
-# /etc/nixos/hardening.nix  – “paranoid” desktop bundle (Graphene malloc)   #
+# /etc/nixos/hardening.nix  – “paranoid++” desktop bundle (Graphene malloc) #
+# inspired by cynicsketch/nix-mineral
+# experimental May 2025 test version
 #############################################################################
-# inspired by cynicsketch/nix-mineral 
 
 { pkgs, lib, ... }:
 
 let
-  # Unstable channel (you already have <unstable> in configuration.nix)
+  # Unstable channel – needed for graphene-hardened-malloc.
   unstable     = import <unstable> { config.allowUnfree = true; };
 
-  # Graphene hardened_malloc lives only in unstable for now
+  # Graphene allocator package path.
   graphenePkg  = unstable.graphene-hardened-malloc;
 in
 {
   ###########################################################################
-  # 0.  Up-stream “hardened” profile  (AppArmor + Scudo + hardened kernel)
+  # 0.  Up-stream “hardened” NixOS profile  (AppArmor + Scudo + hardened LTS)
   ###########################################################################
   imports = [ <nixpkgs/nixos/modules/profiles/hardened.nix> ];
 
   ###########################################################################
-  # 1.  Extra run-time hardening knobs
+  # 1.  Extra run-time hardening knobs  (sysctl)
   ###########################################################################
   boot.kernel.sysctl = {
-   ## ── existing ───────────────────────────────
+   ## ── existing ──────────────────────────────────────────────────────────
     "fs.protected_fifos"                = 2;
     "fs.protected_regular"              = 2;
     "kernel.unprivileged_bpf_disabled"  = 2;
@@ -42,21 +43,24 @@ in
     "vm.unprivileged_userfaultfd"       = 0;
     "vm.max_map_count"                  = 1048576;
 
-    ## ── new, low-risk additions ───────────────
-    # Link-file protections
     "fs.protected_symlinks"             = 1;
     "fs.protected_hardlinks"            = 1;
-
-    # Kernel log & panic behaviour
     "kernel.dmesg_restrict"             = 1;
     "kernel.panic_on_oops"              = 1;
     "kernel.panic"                      = 10;
     "kernel.ctrl-alt-del"               = 0;
+    "net.core.bpf_jit_enable"           = 0;   
 
-    # eBPF: disable JIT compiler
-    "net.core.bpf_jit_enable"           = 0;
+    ## ── TODO: **testable new parameters** (now UN-commented) ─────────────
+    #   Remove or change the value if any of these break a specific workload
+    "kernel.unprivileged_userns_clone"  = 0;   # kill unpriv user-ns
+    "user.max_user_namespaces"          = 0;
+    "fs.suid_dumpable"                  = 0;   # never write core dumps
+    "kernel.core_pattern"               = "|/bin/false";
+#    "kernel.random.trust_cpu"           = 0;   # distrust CPU-built RNG
+    "vm.panic_on_oom"                   = 1;   # fail hard on OOM
 
-#    # Anti-spoof / anti-redirect (IPv4 + IPv6)
+
 #    "net.ipv4.conf.all.accept_redirects"      = 0;
 #    "net.ipv4.conf.default.accept_redirects"  = 0;
 #    "net.ipv6.conf.all.accept_redirects"      = 0;
@@ -66,11 +70,11 @@ in
 #    "net.ipv4.conf.all.send_redirects"        = 0;
 #    "net.ipv4.conf.default.send_redirects"    = 0;
 #
-#    # Source-route & martian filtering
 #    "net.ipv4.conf.all.accept_source_route"   = 0;
 #    "net.ipv4.conf.default.accept_source_route" = 0;
 #    "net.ipv6.conf.all.accept_source_route"   = 0;
 #    "net.ipv6.conf.default.accept_source_route" = 0;
+#
 #    "net.ipv4.conf.all.log_martians"          = 1;
 #
 #    # Strict reverse-path validation
@@ -80,39 +84,41 @@ in
 #    # TIME-WAIT assassination mitigation
 #    "net.ipv4.tcp_rfc1337"                    = 1;
 
-# Uncomment if you want AMD IOMMU only; otherwise let the kernel probe
-# "amd_iommu=on,pt"
+  };
 
-  ];
-
-    ################################################
+  ################################################
   # 2. Boot-time kernel parameters
   ################################################
   boot.kernelParams = [
-    # -- existing from original file --
+    # existing
     "init_on_alloc=1" "init_on_free=1"
     "lockdown=confidentiality"
     "ibt=on" "shstk=on" "lam=on" "l1d_flush=on"
     "slab_nomerge" "page_alloc.shuffle=1"
 
-    # -- new heap-sanity options (≈ 5 % perf hit) --
-    "slub_debug=FZP"
-    "page_poison=1"
+    # heap sanity (≈5 % hit)
+    "slub_debug=FZP" "page_poison=1"
 
-    # Spectre/BHI mitigations always on
+    # Spectre/BHI mitigations
     "spectre_v2=on" "spec_store_bypass_disable=on"
-
+  # ---- performance hits ----
+  #  "nosmt"                  # disable hyper-thread siblings
+  #  "tsx=off"                # kill Intel TSX
+  # ---- performance hits ----
+    "spectre_bhi=on"
+    "srso=on"
+    # -----------------------
     # Landlock stacked with existing LSMs
     "lsm=landlock,lockdown,yama,apparmor"
   ];
 
   ###########################################################################
-  # 3.  (optional) user namespaces
+  # 3.  Disable unprivileged user namespaces globally
   ###########################################################################
-  # security.allowUserNamespaces = true;
+ # security.allowUserNamespaces = lib.mkForce false;
 
   ###########################################################################
-  # 4.  todo someday: swap AppArmor to SELinux (start permissive!)
+  # 4.  todo switch AppArmor to SELinux (start permissive!)
   ###########################################################################
   # security.apparmor.enable = lib.mkForce false;
   # security.selinux = {
@@ -123,57 +129,59 @@ in
   # };
 
   ###########################################################################
-  # 5.  Switch the whole system to Graphene hardened_malloc
+  # 5.  System-wide Graphene hardened_malloc
   ###########################################################################
   environment.memoryAllocator.provider = "graphene-hardened";
 
-  ###########################################################################
-  # 6. todo someday: broken bravaparanoid wrapper 
+#  ###########################################################################
+#  # 6.  todo: Hardened Brave wrappers – GPU / WebGL / WebGPU fully disabled
 #  ###########################################################################
 #  nixpkgs.overlays = [
-#  (final: prev:
-#    let
-#      hmLight = "${graphenePkg}/lib/libhardened_malloc-light.so";
-#      braveReal = "${prev.brave}/bin/brave";          # the real ELF
+#    (final: prev:
+#      let
+#        hmLight    = "${graphenePkg}/lib/libhardened_malloc-light.so";
+#        braveReal  = "${prev.brave}/bin/brave";  # upstream Brave ELF
 #
-#      # A. paranoid – use the *light* allocator
-#      braveParanoid = prev.writeShellScriptBin "brave-paranoid" ''
-#        exec env -u LD_PRELOAD \
-#          LD_PRELOAD=${hmLight}:${"$"}{LD_PRELOAD:-} \
-#          ${braveReal} \
-#            --user-data-dir="$HOME/.config/brave-paranoid" \
-#            --no-first-run \
-#            --enable-features=IsolateOrigins,StrictSiteIsolation,BlockInsecurePrivateNetworkRequests \
-#            --disable-features=BackForwardCache \
-#            --js-flags="--jitless --liftoff --no-wasm-tier-up" \
-#            "$@"
-#      '';
+#        # A. paranoid – Brave + light allocator + GPU fully off
+#        braveParanoid = prev.writeShellScriptBin "brave-paranoid" ''
+#          exec env -u LD_PRELOAD \
+#            LD_PRELOAD=${hmLight}:${"$"}{LD_PRELOAD:-} \
+#            ${braveReal} \
+#              --user-data-dir="$HOME/.config/brave-paranoid" \
+#              --no-first-run \
+#              --disable-gpu --disable-3d-apis --disable-webgl --disable-webgpu \
+#              --enable-features=IsolateOrigins,StrictSiteIsolation,BlockInsecurePrivateNetworkRequests \
+#              --disable-features=BackForwardCache,UseWebP \
+#              --js-flags="--jitless --liftoff --no-wasm-tier-up" \
+#              "$@"
+#        '';
 #
-#      # B. hardened flags, *no* external allocator
-#      braveHardened = prev.writeShellScriptBin "brave-hardened" ''
-#        exec ${braveReal} \
-#            --user-data-dir="$HOME/.config/brave-hardened" \
-#            --no-first-run \
-#            --enable-features=IsolateOrigins,StrictSiteIsolation,BlockInsecurePrivateNetworkRequests \
-#            --disable-features=BackForwardCache \
-#            --js-flags="--jitless --liftoff --no-wasm-tier-up" \
-#            "$@"
-#      '';
-#    in
-#    {
-#      inherit braveParanoid braveHardened;
-#    })
-#];
+#        # B. hardened flags, *no* external allocator
+#        braveHardened = prev.writeShellScriptBin "brave-hardened" ''
+#          exec ${braveReal} \
+#              --user-data-dir="$HOME/.config/brave-hardened" \
+#              --no-first-run \
+#              --disable-gpu --disable-3d-apis --disable-webgl --disable-webgpu \
+#              --enable-features=IsolateOrigins,StrictSiteIsolation,BlockInsecurePrivateNetworkRequests \
+#              --disable-features=BackForwardCache,UseWebP \
+#              --js-flags="--jitless --liftoff --no-wasm-tier-up" \
+#              "$@"
+#        '';
+#      in
+#      {
+#        inherit braveParanoid braveHardened;
+#      })
+#  ];
 #
-## expose them system-wide
-#environment.systemPackages = with pkgs; [ braveParanoid braveHardened ];
+  # Expose the wrappers system-wide
+#  environment.systemPackages = with pkgs; [ braveParanoid braveHardened ];
 
   ###########################################################################
-  # 7. todo someday: secureboot / lurk here: https://wiki.cachyos.org/configuration/secure_boot_setup/
+  # 7.  todo: Secure Boot / TPM2 (optional, requires manual key enrolment) 
+  # lurk here: https://wiki.cachyos.org/configuration/secure_boot_setup/
   ###########################################################################
   # boot.loader.systemd-boot.enable     = true;
-  # boot.loader.systemd-boot.secureBoot = true;  # enrol with sbctl
+  # boot.loader.systemd-boot.secureBoot = true;  # enrol with `sbctl`
   # security.tpm2.enable                = true;
-# }
-
 }
+
