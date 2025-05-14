@@ -85,6 +85,27 @@ in
 
   ];
 
+    ################################################
+  # 2. Boot-time kernel parameters
+  ################################################
+  boot.kernelParams = [
+    # -- existing from original file --
+    "init_on_alloc=1" "init_on_free=1"
+    "lockdown=confidentiality"
+    "ibt=on" "shstk=on" "lam=on" "l1d_flush=on"
+    "slab_nomerge" "page_alloc.shuffle=1"
+
+    # -- new heap-sanity options (≈ 5 % perf hit) --
+    "slub_debug=FZP"
+    "page_poison=1"
+
+    # Spectre/BHI mitigations always on
+    "spectre_v2=on" "spec_store_bypass_disable=on"
+
+    # Landlock stacked with existing LSMs
+    "lsm=landlock,lockdown,yama,apparmor"
+  ];
+
   ###########################################################################
   # 3.  (optional) user namespaces
   ###########################################################################
@@ -107,7 +128,7 @@ in
   environment.memoryAllocator.provider = "graphene-hardened";
 
   ###########################################################################
-  # 6. todo someday: bravaparanoid wrapper 
+  # 6. todo someday: broken bravaparanoid wrapper 
 #  ###########################################################################
 #  nixpkgs.overlays = [
 #  (final: prev:
