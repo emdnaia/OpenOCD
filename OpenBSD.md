@@ -1,49 +1,670 @@
-# OpenOCD
+# OpenOCD - Operational Defense & Concealment Infrastructure
 
-This project gets you:
+**A production-ready, multi-layered security infrastructure for red team operations, privacy research, and enterprise defense. Built on OpenBSD with comprehensive traffic obfuscation, encrypted communications, and advanced evasion capabilities.**
+### **Chinese Privacy Projects Integration**
+1. **Sing-box**: Advanced proxy platform with protocol obfuscation capabilities
+2. **Trojan-GFW**: TLS-based proxy protocol for censorship circumvention
+3. **Hysteria2**: UDP-based proxy with advanced congestion control and obfuscation
 
-- OpenBSD: Static filtering of static IPs for SSH
-- OpenBSD: Dynamic filtering of dynamic IPs for VPN (Wireguard)
-- Linux: Dynamic filtering of dynamic IPs for VPN (Wireguard)
-- OpenBSD: Encrypted DNS via ODoH / DoT via Unbound + DNScrypt
-- OpenBSD: Adblocker skript to pull adlists for Unbound
+### **Core Infrastructure**
+- **OpenBSD 7.6+**: Base operating system with kernel-level security
+- **Proxmox VE**: Virtualization platform for infrastructure deployment
+- **WireGuard**: Modern VPN protocol with kernel implementation
+- **Unbound**: Validating DNS resolver with encryption support
 
-### Some steps
+### **Proxy & Obfuscation**
+- **Squid 6.10**: HTTP/HTTPS proxy with advanced privacy features
 
-1. **Initial Setup:** Start by configuring the OpenBSD gateway with the provided PF configuration to set up initial firewall rules.
-2. **Dynamic IP Script:** Implement the dynamic IP update script to maintain an up-to-date whitelist of IPs that can access the VPN.
-3. **Cron Configuration:** Schedule the provided cron jobs to automate the updating and maintenance tasks.
-4. **DNS Encryption:** Follow the DNS setup instructions to encrypt DNS queries, using either DoT or ODoH.
-5. **Ad Blocking:** Set up the ad blocker script to filter out unwanted ads.
+### **Containerization & Services**
+- **Podman**: Rootless container runtime for service isolation
+- **AdGuard Home**: DNS filtering and ad-blocking platform
+- **Self-Signed PKI**: Internal certificate authority for encrypted services
 
-### Detailed Configuration Scripts and Commands
+### **Security Tools**
+- **PF (Packet Filter)**: OpenBSD's advanced firewall system
+- **DNScrypt**: DNS encryption and validation
+- **OpenSSL**: Cryptographic operations and certificate management
 
-- **Dynamic IP Update Script (`getpara.sh`)**: This script resolves the current IP address for a specified FQDN and updates the PF table with any changes.
+
+This infrastructure provides enterprise-grade security with advanced privacy features, making it suitable for high-stakes operations where attribution avoidance and traffic obfuscation are critical requirements.
+
+### A. Initial Setup and Configuration
+#### A.1. System Architecture Overview
+
+1. **Initial Setup:** Configure the OpenBSD gateway with PF (Packet Filter) rules to establish the base security perimeter.
+2. **Dynamic IP Management:** Implement automated IP whitelisting for VPN access using dynamic DNS resolution.
+3. **Automation Framework:** Deploy cron jobs for system maintenance and security updates.
+4. **DNS Security:** Configure encrypted DNS resolution using either DoT or ODoH protocols.
+5. **Content Filtering:** Implement ad blocking with dynamic list management and low-privilege execution.
+
+#### A.2. Component Architecture
+
+- **Dynamic IP Update Script (`getpara.sh`)**: A robust script that resolves FQDNs to IPs and updates PF tables dynamically. Implements retry logic, DNS fallback, and atomic updates.
   
-- **PF Configuration (`pf.conf`)**: Includes rules for blocking, allowing SSH from specific IPs, handling Wireguard traffic, and default deny policies.
+- **PF Configuration (`pf.conf`)**: A comprehensive firewall configuration implementing:
+  - Default deny policies
+  - SSH access control
+  - WireGuard traffic management
+  - State tracking
+  - NAT rules
 
-- **Cron Jobs**: Automates system updates, VPN renewals, and the dynamic IP update script. If on the go, reduce the cronjob size to refreshing every 2-5 minutes on `getpara.sh`, like this you can unlock a laptop on a hotspot in a train. The laptop would only need a dynamic dns client unlocking the public IP, which is also set to a maximum number kicking off the older ones.
+- **Cron Jobs**: Automated system maintenance tasks including:
+  - System updates
+  - VPN renewals
+  - Dynamic IP updates
+  - DNS cache management
+  - ASN monitoring
 
-- **DNS Configuration**: Setup guides for DoT and ODoH, including configuration changes for `dnscrypt-proxy`.
+- **DNS Infrastructure**: Configurable DNS encryption using either:
+  - ODoH (Oblivious DNS over HTTPS) via Cloudflare
+  - DoT (DNS over TLS) via Quad9
+  - Local caching and filtering
 
-- **Ad Blocker Script**: Instructions and script for setting up ad blocking on OpenBSD using Unbound.
+- **Ad Blocking System**: A low-privilege solution that:
+  - Fetches and processes ad lists
+  - Implements local DNS blocking
+  - Updates dynamically via cron
+  - Runs with minimal system privileges
 
-#### Some OpenBSD Cronjobs right away
+#### A.3. System Hardening Configuration
+
+Before implementing the automation framework, configure essential system hardening settings for OpenBSD.
+
+#### A.3.1. Kernel Security Settings
+- Configure system security parameters in `/etc/sysctl.conf`:
+
+```bash
+# Network Security
+net.inet.ip.forwarding=1          # Enable IP forwarding for gateway functionality
+
+# Security Hardening
+kern.wxabort=1                    # Abort on W^X violations (memory protection)
+hw.smt=1                          # Enable Simultaneous Multithreading (performance vs security trade-off)
+vm.malloc_conf=S                  # Enable malloc security features
+
+# Security Level Configuration
+sysctl kern.securelevel=1         # Moderate security level for operational flexibility
+#sysctl kern.securelevel=2        # High security level (uncomment when done with experimental PF configurations)
+
+```
+
+- **Level 1:** Moderate restrictions, allows most administrative tasks
+- **Level 2:** High security, prevents many system modifications (production)
+
+**Apply settings:**
+```bash
+# Apply immediately (temporary)
+sysctl net.inet.ip.forwarding=1
+sysctl kern.wxabort=1
+
+# Permanent settings are loaded from /etc/sysctl.conf at boot
+# Verify current settings
+sysctl kern.securelevel
+sysctl net.inet.ip.forwarding
+```
+
+### B. System Automation
+#### B.1. OpenBSD Cronjobs
 -  add via `crontab -e`  
 ```
+# System Startup Jobs
+# - WireGuard VPN startup (30s delay to ensure network is ready)
+# - Unbound DNS service restart (30s delay to ensure network is ready)
 @reboot /bin/sleep 30 && /usr/local/bin/wg-quick up wg0
 @reboot /bin/sleep 30 && /usr/sbin/rcctl restart unbound
 
+# System Update Schedule (13:30 UTC)
+# - Check for available patches
+# - Apply system patches
+# - Update installed packages
 30 13 * * * /usr/sbin/syspatch -c 
 32 13 * * * /usr/sbin/syspatch
 35 13 * * * /usr/sbin/pkg_add -u
 
-@reboot /bin/sleep 30 && /usr/local/getpara.sh
+# Dynamic IP Management
+# - Initial IP update on system startup (20s delay)
+# - Regular IP updates at midnight and noon
+@reboot /bin/sleep 20 && /usr/local/getpara.sh
 0 0,12 * * * /usr/local/getpara.sh
 
+# DNS Service Maintenance
+# - Daily Unbound restart at 00:02 to clear cache
 2 0 * * * /usr/sbin/rcctl restart unbound
+
+# ASN and Mobile IP Monitoring
+# - Initial checks on system startup (155s and 157s delays)
+# - Regular checks every 4 minutes
+@reboot /bin/sleep 155 && /bin/sh /usr/local/asn_allow.sh
+@reboot /bin/sleep 157 && /bin/sh /usr/local/phone-ip-check.sh
+
+*/4 * * * * /bin/sh /usr/local/asn_allow.sh 
+*/4 * * * * /bin/sh /usr/local/phone-ip-check.sh
 ```
-### Firewall: OpenBSD PF rules for static & dynamic ips
+
+#### B.2. ASN Allow Script
+- This script checks and updates ASN information for dynamic IPs
+- Save as `/usr/local/asn_allow.sh`
+```sh
+#!/bin/sh
+
+FQDN="example.myhoster.com"
+ASN_FILE="/usr/local/asn_list.txt"
+LOG_FILE="/usr/local/asn_update.log"
+LOCK_FILE="/usr/local/asn_allow.lock"
+TMP_ASN_FILE="/tmp/asn_list.tmp"
+
+MAX_RETRIES=3
+RETRY_DELAY=2
+TIMEOUT=10
+REQUIRED_TOOLS="dig curl jq grep sort"
+
+log() {
+  echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+retry_command() {
+  local retries=0
+  while [ $retries -lt $MAX_RETRIES ]; do
+    "$@" && return 0
+    retries=$((retries + 1))
+    sleep $((RETRY_DELAY ** retries))
+  done
+  return 1
+}
+
+# Check dependencies
+for tool in $REQUIRED_TOOLS; do
+  if ! command -v "$tool" > /dev/null 2>&1; then
+    case "$tool" in
+      dig) INSTALL_CMD="pkg_add bind-tools" ;;
+      curl) INSTALL_CMD="pkg_add curl" ;;
+      jq) INSTALL_CMD="pkg_add jq" ;;
+      *) INSTALL_CMD="pkg_add $tool" ;;
+    esac
+    log "ERROR: Required tool '$tool' is not installed. Please install it using: $INSTALL_CMD. Exiting."
+    exit 1
+  fi
+done
+
+# Lock handling
+if [ -f "$LOCK_FILE" ]; then
+  LOCK_AGE=$(($(date +%s) - $(stat -f %m "$LOCK_FILE")))
+  if [ "$LOCK_AGE" -gt 300 ]; then
+    log "Stale lock file detected (age: $LOCK_AGE seconds). Removing."
+    rm -f "$LOCK_FILE"
+  else
+    log "Another instance is running (lock file age: $LOCK_AGE seconds). Exiting."
+    exit 1
+  fi
+fi
+trap 'rm -f "$LOCK_FILE"' EXIT
+touch "$LOCK_FILE"
+chmod 600 "$LOCK_FILE"
+
+if [ ! -f "$ASN_FILE" ]; then
+  touch "$ASN_FILE"
+  chmod 600 "$ASN_FILE"
+fi
+log "=== Starting asn_allow.sh with RIPEstat API for $FQDN ==="
+
+IP="$(retry_command dig +short "$FQDN" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
+if [ -z "$IP" ]; then
+  log "ERROR: Failed to resolve FQDN: $FQDN"
+  exit 1
+fi
+log "Resolved $FQDN → $IP"
+
+if [ -s "$ASN_FILE" ]; then
+  if grep -qF "$IP" "$ASN_FILE"; then
+    log "IP $IP is already covered. Skipping update."
+    exit 0
+  fi
+fi
+log "IP $IP is not covered. Proceeding with ASN retrieval."
+
+RAW_RESPONSE=$(retry_command curl -m $TIMEOUT -s "https://ipinfo.io/$IP")
+ASN=$(echo "$RAW_RESPONSE" | grep '"org":' | sed -E 's/.*"org": *"([^"]*)".*/\1/' | grep -Eo '^AS[0-9]+')
+if [ -z "$ASN" ]; then
+  log "ERROR: Could not parse ASN from ipinfo.io for $IP. Raw response: $RAW_RESPONSE"
+  exit 1
+fi
+log "Identified ASN: $ASN for $IP"
+
+retry_command curl -m $TIMEOUT -s "https://stat.ripe.net/data/announced-prefixes/data.json?resource=$ASN" | \
+  jq -r '.data.prefixes[].prefix' | sort -u > "$TMP_ASN_FILE"
+
+COUNT_ALL=$(wc -l < "$TMP_ASN_FILE")
+if [ "$COUNT_ALL" -eq 0 ]; then
+  log "ERROR: No routes found for ASN: $ASN"
+  rm -f "$TMP_ASN_FILE"
+  exit 1
+fi
+log "Found $COUNT_ALL routes for ASN: $ASN"
+
+if cmp -s "$TMP_ASN_FILE" "$ASN_FILE"; then
+  log "ASN file is up-to-date. No changes needed."
+else
+  mv "$TMP_ASN_FILE" "$ASN_FILE"
+  log "ASN routes updated and saved to $ASN_FILE"
+fi
+
+rm -f "$TMP_ASN_FILE"
+log "=== asn_allow.sh done ==="
+```
+
+#### B.3. Phone IP Check Script
+- This script monitors IP changes for mobile devices
+- Save as `/usr/local/phone-ip-check.sh`
+```sh
+#!/bin/sh
+
+# FQDNs to compare
+FQDN1="example1.hoster1.com"
+FQDN2="example2.hoster2.com"
+
+# Function to resolve IP and return only the first valid IP
+get_ip() {
+    dig +short "$1" | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -n 1
+}
+
+# Get IPs for both FQDNs
+IP1=$(get_ip "$FQDN1")
+IP2=$(get_ip "$FQDN2")
+
+# Check if we got valid IPs
+if [ -z "$IP1" ] || [ -z "$IP2" ]; then
+    logger "phone-ip-check: Failed to resolve one or both FQDNs"
+    exit 1
+fi
+
+# Check if IPs are different
+if [ "$IP1" != "$IP2" ]; then
+    # Run the getpara script if IPs are different
+    /usr/local/getpara.sh
+    logger "phone-ip-check: Different IPs detected ($IP1 vs $IP2), ran getpara.sh"
+else
+    logger "phone-ip-check: IPs are the same or FQDN2 not set, no action needed"
+fi
+
+# Debug via pf
+# pfctl -t dynamic_hosts -T show
+#
+# via fw log
+# tail -f /usr/local/firewall_update.log
+#
+# via openbsd
+# tail -f /var/log/messages | grep "phone-ip-check"
+### B.4. System Debugging and Troubleshooting
+
+This section provides comprehensive debugging commands for monitoring and troubleshooting the OpenOCD security infrastructure.
+
+#### B.4.1. Firewall (PF) Debugging
+
+**PF Table Management:**
+```bash
+# Show dynamic hosts table contents
+pfctl -t dynamic_hosts -T show
+
+# Show ASN table contents  
+pfctl -t asn -T show
+
+# Show Cloudflare IPs table
+pfctl -t cloudflare_ips -T show
+
+# Test PF configuration syntax
+pfctl -nf /etc/pf.conf
+
+# Reload PF rules
+pfctl -f /etc/pf.conf
+
+# Show PF status and statistics
+pfctl -s info
+pfctl -s states
+pfctl -s rules
+
+# Show blocked traffic
+pfctl -s states | grep CLOSED
+
+# Monitor PF logs (if pflog enabled)
+tcpdump -n -e -ttt -i pflog0
+```
+
+#### B.4.2. Dynamic IP Management Debugging
+
+**Script Monitoring:**
+```bash
+# Monitor firewall update logs
+tail -f /usr/local/firewall_update.log
+
+# Monitor system messages for phone-ip-check
+#tail -f /var/log/messages | grep "phone-ip-check"
+
+# Monitor system messages for pf-updater
+tail -f /var/log/messages | grep "pf-updater"
+
+# Check current dynamic IPs
+cat /usr/local/gotten-para
+
+
+```
+
+#### B.4.3. WireGuard VPN Debugging
+
+**Interface Status:**
+```bash
+# Check WireGuard interface status
+ifconfig wg0
+
+# Show WireGuard configuration
+wg showconf wg0
+
+# Show WireGuard peer status and transfer statistics
+wg show
+
+
+# Check if using kernel implementation
+ifconfig wg0 | grep "groups: wg"
+
+# Monitor WireGuard traffic
+wg show wg0 transfer
+
+# Check WireGuard in kernel messages
+dmesg | grep -i wireguard
+
+# Monitor WireGuard process (if userspace)
+top -d1 | grep wg
+
+# Multiple WireGuard interface management
+sh /etc/netstart wg0
+
+
+# old-non kernel: Restart WireGuard interfaces with delay
+# wg-quick down wg0 && sleep 5 && wg-quick up wg0
+
+```
+
+**Network Routing:**
+```bash
+# Check routing table for VPN network
+route -n show -inet | grep 10.0.0
+
+# Check interface routing
+route -n show -inet -interface wg0
+
+```
+
+#### B.4.4. DNS Service Debugging
+
+**Unbound DNS:**
+```bash
+# Check Unbound status
+rcctl status unbound
+
+# Check Unbound configuration
+unbound-checkconf
+
+# Monitor Unbound logs
+tail -f /var/log/daemon | grep unbound
+
+# Test encrypted DNS (DoT)
+dig @127.0.0.1 -p 853 +tls example.com
+
+# Check DNS cache statistics
+unbound-control stats_noreset
+```
+
+**AdGuard Home (if using containerized setup):**
+```bash
+# Check container status
+podman ps -a --filter name=adguard-home
+
+# View container logs
+podman logs adguard-home
+
+# Monitor container resource usage
+podman stats --no-stream adguard-home
+
+# Test encrypted DNS with AdGuard
+dig @10.0.0.33 -p 853 +tls example.com
+dig @10.0.0.33 -p 853 +tls-ca=/path/to/server.crt example.com
+
+# Check AdGuard web interface
+curl -k https://10.0.0.33:3000/
+```
+
+#### B.4.5. Proxy Service Debugging
+
+**Squid Proxy:**
+```bash
+# Check Squid status
+rcctl status squid
+
+# Test Squid configuration
+squid -k parse
+
+# Monitor Squid access logs
+tail -f /var/squid/logs/access.log
+
+# Monitor Squid cache logs
+tail -f /var/squid/logs/cache.log
+
+# Test proxy functionality
+curl --proxy http://10.0.0.1:3128 https://ipinfo.io/ip
+
+```
+
+#### B.4.6. System Service Debugging
+
+**Service Status:**
+```bash
+# Check all enabled services
+rcctl ls on
+
+# Check specific service status
+rcctl status unbound
+rcctl status squid
+
+# Check service logs
+tail -f /var/log/daemon
+tail -f /var/log/messages
+
+# Monitor system resources
+top -d1
+vmstat 1
+iostat 1
+
+# Check network connections
+netstat -an | grep LISTEN
+netstat -rn
+```
+
+#### B.4.7. Network Connectivity Testing
+
+**Basic Connectivity:**
+```bash
+# Test external connectivity
+ping 1.1.1.1
+ping 8.8.8.8
+
+# Test DNS resolution
+nslookup example.com
+host example.com
+
+# Test specific ports
+nc -zv example.com 443
+nc -zv 10.0.0.1 53
+
+# Monitor network traffic
+tcpdump -i vio0 host example.com
+tcpdump -i wg0
+```
+
+**Advanced Network Testing:**
+```bash
+# Test MTU discovery
+ping -D -s 1472 example.com
+
+# Trace network path
+traceroute example.com
+
+# Monitor interface statistics
+netstat -i
+systat ifstat
+
+# Check ARP table
+arp -a
+
+# Monitor bandwidth usage
+systat netstat
+```
+
+#### B.4.8. Log File Locations
+
+**System Logs:**
+```bash
+# Main system log
+/var/log/messages
+
+# Authentication logs  
+/var/log/authlog
+
+# Daemon logs
+/var/log/daemon
+
+# Mail logs
+/var/log/maillog
+
+# Secure logs (sudo, etc.)
+/var/log/secure
+```
+
+**Application Logs:**
+```bash
+# Firewall update logs
+/usr/local/firewall_update.log
+
+# ASN update logs
+/usr/local/asn_update.log
+
+# Squid logs
+/var/squid/logs/access.log
+/var/squid/logs/cache.log
+
+# AdGuard logs (if containerized)
+/path/to/adguard-home/logs/
+```
+
+#### B.4.9. Performance Monitoring
+
+**System Performance:**
+```bash
+# CPU and memory usage
+top -d1
+
+# Disk I/O
+iostat -w 1
+
+# Network statistics
+systat netstat
+
+# Process monitoring
+ps aux | grep -E "(squid|unbound|wg)"
+
+# Memory usage details
+vmstat -m
+```
+
+**Security Monitoring:**
+```bash
+# Failed login attempts
+grep "Failed" /var/log/authlog
+
+# Sudo usage
+grep "sudo" /var/log/secure
+
+# PF blocked connections
+pfctl -s states | grep CLOSED
+
+# Monitor for suspicious activity
+tail -f /var/log/authlog | grep -E "(Failed|Invalid)"
+```
+
+This debugging section provides comprehensive tools for monitoring, troubleshooting, and maintaining your OpenOCD security infrastructure. 
+### C. Network Infrastructure and Firewall Configuration
+
+#### C.1. Proxmox Hypervisor Traffic Forwarding
+
+Before configuring the OpenBSD PF firewall rules, it's important to understand how traffic reaches your OpenBSD security appliances when running in a virtualized environment like Proxmox.
+
+**Architecture Overview:**
+```
+Internet → Proxmox Host → OpenBSD VM (PF Firewall) → Backend Services
+```
+
+In this setup:
+- **Proxmox Host**: Acts as the hypervisor layer, receiving external traffic
+- **OpenBSD VM**: Runs one of the PF configurations below (C.2, C.3, C.4, or C.5)
+- **Backend Services**: Web servers, applications, or other VMs behind the OpenBSD firewall
+
+**Proxmox Host Configuration:**
+Configure traffic forwarding on the Proxmox host using iptables rules in `/etc/network/interfaces`:
+
+```bash
+## Network Configuration Variables
+real_adapter_name="vmbr0"           # Your Proxmox bridge interface
+openbsd_firewall_ip="10.10.10.13"   # IP of your OpenBSD PF firewall VM
+backend_server_ip="10.10.10.20"     # IP of backend server (if direct forwarding)
+
+## HTTPS Traffic Forwarding (Port 443)
+# Forward incoming HTTPS traffic to OpenBSD firewall for processing
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
+
+## HTTP Traffic Forwarding (Port 80)
+# Forward incoming HTTP traffic to OpenBSD firewall for processing
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
+
+## SSH Traffic Forwarding (Port 22)
+# Forward SSH traffic to OpenBSD firewall for access control
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 22 -j DNAT --to $openbsd_firewall_ip:22
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 22 -j DNAT --to $openbsd_firewall_ip:22
+
+## WireGuard VPN Traffic Forwarding (Port 51820)
+# Forward VPN traffic to OpenBSD firewall for VPN termination
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p udp --dport 51820 -j DNAT --to $openbsd_firewall_ip:51820
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 51820 -j DNAT --to $openbsd_firewall_ip:51820
+
+## Alternative: Direct Backend Forwarding (bypass OpenBSD for specific services)
+# Uncomment these if you want to forward certain traffic directly to backend servers
+#post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 8080 -j DNAT --to $backend_server_ip:8080
+#post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 8080 -j DNAT --to $backend_server_ip:8080
+```
+
+**Traffic Flow Examples:**
+
+1. **Web Traffic with OpenBSD Filtering:**
+   ```
+   Client → Proxmox:443 → OpenBSD:443 → Backend:8080
+   ```
+
+2. **VPN Traffic:**
+   ```
+   VPN Client → Proxmox:51820 → OpenBSD:51820 → WireGuard Tunnel
+   ```
+
+3. **SSH Access Control:**
+   ```
+   Admin → Proxmox:22 → OpenBSD:22 (PF rules apply dynamic IP filtering)
+   ```
+
+**Important Notes:**
+- The OpenBSD VM will receive traffic on its configured interface (typically `vio0`)
+- PF rules in the OpenBSD VM will then process this forwarded traffic
+- Choose one of the PF configurations below based on your security requirements
+- Ensure the OpenBSD VM has proper routing back to the Proxmox host for return traffic
+
+#### C.2. OpenBSD PF Rules - Basic Configuration (Static & Dynamic IPs)
 
 - You edit the pf rules on ` /etc/pf.conf ` and check via  `pfctl -nf /etc/pf.conf` and  load them via  `pfctl -f  /etc/pf.conf` | non - webserver example
 - version A (more secure)
@@ -52,6 +673,21 @@ This project gets you:
 #
 # See pf.conf(5) and /etc/examples/pf.conf
 
+#-----  examples start #----- 
+#ban evil like:
+#table <abusive_ips> persist
+#block quick from <abusive_ips>
+
+###  could be doing redirection like:
+#pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
+
+###  try flagging and rate limiting like: 
+#pass in on vio0 proto tcp to port 443 \
+#  flags S/SA keep state \
+#  (max-src-conn 100, max-src-conn-rate 15/5, \
+#  overload <abusive_ips> flush)
+#-----  examples end #----- 
+
 # Configuration Variables
 dynamic_hosts_file="/usr/local/gotten-para"  # Location for dynamic hosts
 wireguard_port="51820"                        # Your WireGuard VPN port
@@ -59,44 +695,78 @@ wireguard_net="10.0.0.0/24"                 # Your WireGuard VPN network
 ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"  # IPs allowed for SSH
 wireguard_iface="wg0"                       # WireGuard interface identifier
 
-# Block Ipv6 - remember hotspot leakage
-block quick inet6
 
-set skip on lo
+# ===== Basic Security Settings =====
+# Block all IPv6 traffic for security
+block drop quick inet6
 
-# Block all incoming on vio0 but allow outgoing
-block in on vio0 all
+# we go block-drop
+set block-policy drop
+set skip on lo  # Skip loopback traffic
+
+# Anti-spoofing rule for external interface
+antispoof quick for vio0 inet
+
+# ---- Scrubbing ----
+# Basic packet scrubbing
+match in on vio0 scrub (no-df random-id max-mss 1440 reassemble tcp)
+
+#block drop quick from <abusive_ips>
+block return in log on !lo0 proto tcp to port 6000:6010
+
+# Prevent network access for _pbuild user
+block drop out log proto {tcp udp} user _pbuild
+
+# ---- DHCP/BOOTP Blocking ----
+# Block broadcast DHCP traffic
+block drop in log quick on vio0 proto udp from any to 255.255.255.255 port 67:68
+
+# Block all DHCP/BOOTP traffic
+block drop in log quick on vio0 proto udp from any to any port 67:68
+
+# ---- Block Private Addresses ----
+# Block spoofed private addresses on external interface
+block drop in log quick on vio0 from {10.0.0.0/8 , 172.16.0.0/12, 192.168.0.0/16, 255.255.255.255/32} to any
+
+# ---- SSH Rule ----
+# Allow SSH from specific IPs
+pass in quick on vio0 proto tcp from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 22 keep state
+
+# Block all inbound traffic by default
+block drop in log on vio0 all
 
 # NAT for outgoing traffic
-match out on egress inet from !(egress:network) to any nat-to (egress:0)
+match out on egress inet from $wireguard_net to any nat-to (egress:0)
+#match out on egress inet from !(egress:network) to any nat-to (egress:0)
 
-# Allow SSH from specified IPs
-pass in on vio0 proto tcp from $ssh_allowed_ips to (vio0) port 22 keep state
-pass out quick on vio0 keep state
+# allow trojan-gfw / hystria2
+pass in log on vio0 proto { tcp, udp } from <dynamic_hosts> to (vio0) port {443} keep state
+# allow DOT 
+pass in log on vio0 proto { tcp, udp } from <dynamic_hosts> to (vio0) port {853} keep state
 
-# Allow only IPs from <dynamic_hosts> to access WireGuard port on vio0
-pass in on vio0 proto udp from <dynamic_hosts> to any port $wireguard_port keep state
-pass out on vio0 proto udp to <dynamic_hosts> port $wireguard_port keep state
+# ---- WireGuard Rules ----
+# Allow WireGuard traffic from dynamic hosts
+pass in quick on vio0 proto udp from <dynamic_hosts> to (vio0) port $wireguard_port keep state
+pass out quick on vio0 proto udp to <dynamic_hosts> port $wireguard_port keep state
 
-# Allow all on WireGuard interface
-pass in on $wireguard_iface from $wireguard_net to any
-pass out on $wireguard_iface from any to $wireguard_net
+# Allow all traffic on WireGuard interface
+pass in on $wireguard_iface from $wireguard_net to any keep state
+pass out on $wireguard_iface from any to $wireguard_net keep state
 
-# By default, do not permit remote connections to X11
-block return in on ! lo0 proto tcp to port 6000:6010
-
-# Port build user does not need network
-block return out log proto {tcp udp} user _pbuild
+# ---- Outbound Traffic ----
+# Allow all outbound traffic
+#pass out on vio0 all flags S/SA keep state
+pass out on vio0 keep state
 ```
 
-
-- hypervisor forward example to -> pf firewall filtering forward to -> webserver
-- hypervisor forward via iptables:
+#### C.3. (OPTIONAL) Hypervisor Forward Configuration
+- hypervisor forward example to -> openbsd pf firewall filtering forward to -> webserver
+- hypervisor targets can be forwarded via iptables in `/etc/network/interfaces` like:
 
 ```
 ## Variables
-real_adapter_name="YOUR_ADAPTER_NAME"  # Replace this with the actual adapter name like eth0 or any placeholder
-backend_server_ip="10.0.0.33"  # New IP instead of 10.9.3.33
+real_adapter_name="ADAPTER_NAME"
+our_pf_firewall="10.10.10.13"  # 
 
 ## Forward port 443 from the real adapter to backend server on port 443
 post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $backend_server_ip:443
@@ -107,6 +777,7 @@ post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 80 -j
 post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $backend_server_ip:80
 ```
 
+#### C.4. (Web Server PF Example)
 - version B (with webserver): pf then forwards to webserver that can be accessed from dynamic ips + static ips
 - dns is internal and can connect to the vpn
 ```
@@ -116,93 +787,316 @@ post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 
 
 # Configuration Variables
 dynamic_hosts_file="/usr/local/gotten-para"  # Location for dynamic hosts
-wireguard_port="51820"                       # Your WireGuard VPN port
-wireguard_net="10.0.0.0/24"                  # Your WireGuard VPN network
-ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"   # IPs allowed for SSH
+wireguard_port="51820"                       # WireGuard VPN port
+wireguard_net="10.0.0.0/24"                  # WireGuard VPN network
+ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"  # IPs allowed for SSH
 wireguard_iface="wg0"                        # WireGuard interface identifier
-final_backend_server="10.0.0.207"            # Final backend server IP
-internal_dns_server="10.0.0.34"              # Internal DNS server IP
-gateway_server="10.0.0.1"                    # Gateway server IP
 
-# Block IPv6
-block quick inet6
+# Dynamic IPs table
+table <dynamic_hosts> persist file "/usr/local/gotten-para"
 
-set skip on lo  # Skip loopback interface
+# Block all IPv6 traffic
+block drop quick inet6
 
-# ---- Security Rules ----
+# ---- Sing-box/Proxy Redirection Examples ----
+#pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
 
-# Block all inbound traffic except for explicitly allowed rules
-block in on vio0 all
+# Redirect incoming HTTPS (443) traffic to Sing-box on localhost:8080
+#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
+#pass in quick proto tcp from any to 127.0.0.1 port 8080
 
-# Block X11 connections (optional security)
-block return in on ! lo0 proto tcp to port 6000:6010
+# Port forwarding examples
+#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
 
-# Block network access for _pbuild user
-block return out log proto {tcp udp} user _pbuild
+# Redirect HTTPS to HAProxy
+#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 443
 
-# ---- NAT for Outgoing Traffic ----
+# ---- Advanced Scrubbing Examples (commented) ----
+# Basic packet scrubbing options
+#block in quick proto tcp flags U/U
+#pass in proto tcp flags S/SAFR
+# min-ttl 15 max-ttl 64
+#block in quick proto tcp from any to any flags any ttl > 220
+#scrub in all fragment reassemble
+# pass in on vio0 proto tcp to $web_server port www synproxy state
 
-# NAT outgoing traffic from non-egress networks (LAN/WireGuard)
-match out on egress inet from !(egress:network) to any nat-to (egress:0)
+# Additional redirection examples
+#rdr pass on egress proto udp from any to (egress) port 443 -> 127.0.0.1 port 8080
+#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
+#pass in on vio0 proto { tcp, udp } from any to (vio0) port {443, 8080} keep state
+#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
 
-# NAT for outgoing traffic from WireGuard network to external clients
+# Sing-box specific examples
+#pass in on vio0 proto udp from any to 127.0.0.1 port 443 rdr-to 127.0.0.1 port 8080 keep state
+#pass in on vio0 proto udp from any to any port 8080 keep state
+#pass in quick log on vio0 proto { udp tcp } from any to (vio0) port 443 keep state
+#pass out quick log on vio0 proto tcp to any port 443 keep state
+
+# Rate limiting examples
+#pass in on vio0 proto tcp to port 443 flags S/SA \
+#  keep state (max-src-conn 100, max-src-conn-rate 15/5, \
+#  overload <abusive_hosts> flush)
+#pass in on vio0 proto tcp to port 443 \
+#  flags S/SA keep state \
+#  (max-src-conn 100, max-src-conn-rate 15/5, \
+#  overload <abusive_ips> flush)
+
+# State Tracking examples
+#pass in log (all) on vio0 proto tcp from any to port 443 flags S/SA keep state \
+#  (max-src-conn 500, max-src-nodes 1000, overload <abusive_ips> flush global)
+
+# Stateful Filtering Rules examples
+#pass in log on vio0 proto tcp from any to (vio0) port 443 flags S/SA keep state
+#pass in log on vio0 proto tcp from any to (vio0) port 8080 flags S/SA keep state
+
+# Advanced redirection examples
+#pass in log on vio0 proto {tcp, udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
+
+#pass in quick proto { tcp, udp } from <dynamic_hosts> to (vio0) port 443 flags S/SA keep state
+#pass in quick proto { tcp, udp } from <dynamic_hosts> to (vio0) port 8080 flags S/SA keep state
+
+# Port forwarding to backend servers
+#pass in quick log on vio0 proto tcp from <dynamic_hosts> to any port 443 flags S/SA keep state
+#pass in quick log on vio0 proto tcp from <dynamic_hosts> to any port 8080 flags S/SA keep state
+
+# Rate Limiting with overload protection
+#pass in log (all) on vio0 proto tcp from any to (vio0) port 443 flags S/SA keep state \
+#  (max-src-conn 100, max-src-conn-rate 15/5, overload <abusive_ips> flush global)
+
+# Stateful Outbound examples
+#pass out on vio0 proto tcp from any to any port 8080 flags S/SA keep state
+#pass out on vio0 proto tcp from any to any port 443 flags S/SA keep state
+
+# Final redirection examples
+#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
+#pass in quick proto tcp from any to 127.0.0.1 port 8080
+
+#pass in quick log on vio0 proto { udp tcp } from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 8080 keep state
+#pass out on vio0 proto tcp to port 8080 keep state
+#pass out on vio0 proto tcp to port 443 keep state
+#pass in quick log on vio0 proto { udp tcp } from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 8080
+#rdr-to 127.0.0.1 port 8080 keep state
+
+# Set block policy to drop
+set block-policy drop
+set skip on lo  # Skip loopback traffic
+
+# Block packets with URG flag set (commonly used in attacks)
+block in on vio0 proto tcp flags U/U
+
+# Anti-spoofing rule for external interface
+antispoof quick for vio0 inet
+
+# ---- Scrubbing ----
+# Basic packet scrubbing
+match in on vio0 scrub (no-df random-id max-mss 1440 reassemble tcp)
+
+# ---- X11 Blocking ----
+# Block X11 connections
+block return in log on !lo0 proto tcp to port 6000:6010
+
+# ---- User Restrictions ----
+# Prevent network access for _pbuild user
+block drop out log proto {tcp udp} user _pbuild
+
+# ---- DHCP/BOOTP Blocking ----
+# Block broadcast DHCP traffic
+block drop in log quick on vio0 proto udp from any to 255.255.255.255 port 67:68
+
+# Block all DHCP/BOOTP traffic
+block drop in log quick on vio0 proto udp from any to any port 67:68
+
+# ---- Block Private Addresses ----
+# Block spoofed private addresses on external interface
+block drop in log quick on vio0 from {10.0.0.0/8 , 172.16.0.0/12, 192.168.0.0/16, 255.255.255.255/32} to any
+
+# ---- SSH Rules ----
+# Allow SSH from specific IPs
+pass in quick on vio0 proto tcp from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 22 keep state
+
+# ---- Port Forwarding and Traffic Handling ---- CERTBOT
+# Allow access to port 80 (HTTP) and 443 (HTTPS) for certificate management
+#pass in quick log on vio0 proto tcp from any to any port 443 keep state
+#pass in quick log on vio0 proto tcp from any to any port 8080 keep state
+
+# ---- Default Block Rules ----
+# Block all inbound traffic by default
+block drop in log on vio0 all
+
+# ---- NAT Rules ----
+# NAT for outgoing traffic from WireGuard network
 match out on egress inet from $wireguard_net to any nat-to (egress:0)
 
-# ---- Port Forwarding and Traffic Handling ----
+# ---- Proxy/VPN Service Rules ----
+# Allow trojan-gfw protocols
+pass in log on vio0 proto { tcp, udp } from <dynamic_hosts> to (vio0) port {443} keep state
+pass in log on vio0 proto { tcp, udp } from { <dynamic_hosts> } to (vio0) port {853} keep state
 
-# Allow access to port 80 (HTTP) from dynamic IPs and ssh_allowed_ips, and forward traffic to internal server
-pass in log on vio0 proto tcp from <dynamic_hosts> to any port 80 rdr-to $final_backend_server port 80 keep state
-pass in log on vio0 proto tcp from $ssh_allowed_ips to any port 80 rdr-to $final_backend_server port 80 keep state
+# ---- WireGuard Rules ----
+# Allow WireGuard traffic from dynamic hosts
+pass in log on vio0 proto udp from <dynamic_hosts> to (vio0) port $wireguard_port keep state
 
-# Allow access to port 443 (HTTPS) from dynamic IPs and ssh_allowed_ips, and forward traffic to internal server
-pass in log on vio0 proto tcp from <dynamic_hosts> to any port 443 rdr-to $final_backend_server port 443 keep state
-pass in log on vio0 proto tcp from $ssh_allowed_ips to any port 443 rdr-to $final_backend_server port 443 keep state
+# Allow all traffic on WireGuard interface
+pass in on $wireguard_iface from $wireguard_net to any keep state
+pass out on $wireguard_iface from any to $wireguard_net keep state
 
-# ---- WireGuard-Specific Rules for Internal Traffic ----
+# ---- DNS Rules (commented examples) ----
+# Allow DNS requests from specified IPs
+#pass in quick on vio0 proto {udp, tcp} from $ssh_allowed_ips to any port 53 keep state
+#pass in on $wireguard_iface proto udp from $wireguard_net to $wireguard_net port 53 keep state
+#pass out on $wireguard_iface proto udp from $wireguard_net to $wireguard_net port 53 keep state
 
-# Allow intra-WireGuard traffic (e.g., from WireGuard clients accessing internal server)
-pass in on $wireguard_iface proto tcp from $wireguard_net to $final_backend_server keep state
-pass out on $wireguard_iface proto tcp from $final_backend_server to $wireguard_net keep state
-
-# ---- SSH and DNS Access Rules ----
-
-# Allow SSH from gateway_server
-pass in on vio0 proto tcp from $gateway_server to (vio0) port 22 keep state
-pass out quick on vio0 keep state
-
-# Allow DNS requests from allowed SSH IPs
-pass in on vio0 proto {udp tcp} from $ssh_allowed_ips to any port 53 keep state
-pass out on vio0 proto {udp tcp} from any to any port 53 keep state
-
-# ---- WireGuard-Specific DNS Rules ----
-
-# Allow DNS requests from WireGuard clients (on WireGuard network) to internal DNS server
-pass in on $wireguard_iface proto udp from $internal_dns_server to $wireguard_net port 53 keep state
-pass out on $wireguard_iface proto udp from $wireguard_net to $internal_dns_server port 53 keep state
-
-# ---- WireGuard-Specific Rules for External Access ----
-
-# Only allow WireGuard access from dynamic IPs
-pass in on vio0 proto udp from <dynamic_hosts> to any port $wireguard_port keep state
-pass out on vio0 proto udp from (vio0) port $wireguard_port to <dynamic_hosts> keep state
-
-# Allow DNS server to access WireGuard for traffic
-pass in on vio0 proto udp from $internal_dns_server to (vio0) port $wireguard_port keep state
-pass out on vio0 proto udp from (vio0) port $wireguard_port to $internal_dns_server keep state
-
-# Allow all traffic between WireGuard interface (wg0) and WireGuard network
-pass in on $wireguard_iface from $wireguard_net to any
-pass out on $wireguard_iface from any to $wireguard_net
-
-# ---- Ensure Return Traffic ----
-
-# Ensure return traffic from internal server to WireGuard clients is handled properly
-pass in on $wireguard_iface proto tcp from $final_backend_server to any keep state
-pass out on vio0 proto tcp from $final_backend_server to any keep state
+# ---- Outbound Traffic ----
+# Allow all outbound traffic
+pass out on vio0 keep state
 ```
 
-### Skript to add the dynamic hosts
-- Important: All your clients will need to get FQDNs, and you can do that by adding for example containers in your home, work etc, that use tools like `ddclient` + any DYNDNS-hoster.
+#### C.5. (Production PF Example with Proxy Support)
+- version C (production): Advanced configuration with proxy forwarding and extensive security hardening
+- Based on real-world deployment with sing-box/proxy integration capabilities
+```
+# $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
+#
+# See pf.conf(5) and /etc/examples/pf.conf
+
+# Configuration Variables
+dynamic_hosts_file="/usr/local/gotten-para"  # Location for dynamic hosts
+wireguard_port="51820"                       # WireGuard VPN port (standard)
+wireguard_net="10.0.0.0/24"                  # WireGuard VPN network
+ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"  # IPs allowed for SSH
+wireguard_iface="wg0"                        # WireGuard interface identifier
+
+# Dynamic IPs table
+table <dynamic_hosts> persist file "/usr/local/gotten-para"
+
+# Block all IPv6 traffic
+block drop quick inet6
+
+# ---- Proxy/Sing-box Redirection (commented examples) ----
+# Redirect incoming HTTPS (443) traffic to local proxy/sing-box
+#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
+#pass in quick proto tcp from any to 127.0.0.1 port 8080
+
+# Alternative proxy redirection for dynamic hosts only
+#pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
+
+# Set block policy to drop
+set block-policy drop
+set skip on lo  # Skip loopback traffic
+
+# Block packets with URG flag set (commonly used in attacks)
+block in on vio0 proto tcp flags U/U
+
+# Anti-spoofing rule for external interface
+antispoof quick for vio0 inet
+
+# ---- Enhanced Scrubbing ----
+# Advanced packet scrubbing with security hardening
+match in on vio0 scrub (no-df random-id max-mss 1440 reassemble tcp)
+
+# ---- X11 Blocking ----
+# Block X11 connections for security
+block return in log on !lo0 proto tcp to port 6000:6010
+
+# ---- User Restrictions ----
+# Prevent network access for _pbuild user
+block drop out log proto {tcp udp} user _pbuild
+
+# ---- DHCP/BOOTP Blocking ----
+# Block broadcast DHCP traffic
+block drop in log quick on vio0 proto udp from any to 255.255.255.255 port 67:68
+
+# Block all DHCP/BOOTP traffic
+block drop in log quick on vio0 proto udp from any to any port 67:68
+
+# ---- Block Private Addresses ----
+# Block spoofed private addresses on external interface
+block drop in log quick on vio0 from {10.0.0.0/8 , 172.16.0.0/12, 192.168.0.0/16, 255.255.255.255/32} to any
+
+# ---- SSH Rules ----
+# Allow SSH from dynamic hosts and specific IPs
+pass in quick on vio0 proto tcp from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 22 keep state
+
+# ---- Default Block Rules ----
+# Block all inbound traffic by default
+block drop in log on vio0 all
+
+# ---- NAT Rules ----
+# NAT for outgoing traffic from WireGuard network
+match out on egress inet from $wireguard_net to any nat-to (egress:0)
+
+# ---- Proxy/VPN Service Rules ----
+# Allow trojan-gfw (TCP) and hysteria2 (UDP) protocols
+pass in log on vio0 proto { tcp, udp } from <dynamic_hosts> to (vio0) port {443} keep state
+
+# Allow encrypted DNS (DoT) access
+pass in log on vio0 proto { tcp, udp } from { <dynamic_hosts> } to (vio0) port {853} keep state
+
+# ---- WireGuard Rules ----
+# Allow WireGuard traffic from dynamic hosts
+pass in log on vio0 proto udp from <dynamic_hosts> to (vio0) port $wireguard_port keep state
+
+# Allow all traffic on WireGuard interface
+pass in on $wireguard_iface from $wireguard_net to any keep state
+pass out on $wireguard_iface from any to $wireguard_net keep state
+
+# ---- Outbound Traffic ----
+# Allow all outbound traffic
+pass out on vio0 keep state
+```
+
+#### C.5. (Advanced Web Server PF Example with ASN Support)
+- version D (advanced): Web server configuration with ASN tables and port forwarding
+- Based on production deployment with backend server redirection capabilities
+```
+# $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
+
+wireguard_port="{80}"
+wireguard_net="10.0.0.0/24"
+
+ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32, 10.0.1.1/32, 10.0.1.34/32}"
+
+table <dynamic_hosts> persist file "/usr/local/gotten-para"
+table <asn> persist file "/usr/local/asn_list.txt"
+table <cloudflare_ips> persist file "/usr/local/cloudflare"
+
+block drop quick inet6
+
+set block-policy drop
+set skip on lo
+
+block drop in on vio0 proto tcp flags U/U
+
+antispoof quick for vio0 inet
+
+match in on vio0 scrub (no-df random-id max-mss 1440 reassemble tcp)
+
+block return in on ! lo0 proto tcp to port 6000:6010
+
+block return out log proto {tcp udp} user _pbuild
+
+block drop in log on vio0 from {10.0.0.0/8 , 172.16.0.0/12, 192.168.0.0/16, 255.255.255.255/32 } to any
+
+pass in quick on vio0 proto tcp from $ssh_allowed_ips to (vio0) port 22 keep state
+
+block drop in log on vio0 all
+
+match out on egress inet from $wireguard_net to any nat-to (egress:0)
+
+pass in log on vio0 proto udp from <asn> to (vio0) port $wireguard_port keep state
+pass in log on vio0 proto udp from <dynamic_hosts> to (vio0) port $wireguard_port keep state
+
+pass in on vio0 proto udp from 10.0.1.34 to (vio0) port $wireguard_port keep state
+
+pass in on wg0 from $wireguard_net to any keep state
+pass out on wg0 from any to $wireguard_net keep state
+
+pass out on vio0 keep state
+```
+
+### D. Dynamic IP Management
+#### D.1. Dynamic Hosts Script
+- Important: All your clients will need to get FQDNs, and you can do that by adding for example containers in your home, work etc, that use any DYNDNS-hoster.
 - Next, *Ensure you replace `hoster1 + hoster2` with your actual domains to allow dynamic access from.*
 - The script below will access the FQDN and add it to the firewall ruletable for access.
 
@@ -211,503 +1105,1334 @@ I've deployed the following script on `/usr/local/getpara.sh` it creates `temp_g
 ```sh
 #!/bin/sh
 
-# FQDNs
-FQDN1="myhost1.hoster1.org"
-FQDN2="myhost2.hoster2.org"
+# Dynamic PF Table Updater
+# Version 4.1 - OpenBSD Optimized
 
-# Define variables
+# Configuration
+FQDNS="example1.myhoster.com example2.yourhoster.com"
 WORK_DIR="/usr/local"
-TEMP_IP_FILE="$WORK_DIR/temp_gotten_para"
 FINAL_IP_FILE="$WORK_DIR/gotten-para"
 LOG_FILE="$WORK_DIR/firewall_update.log"
-MAX_IP_COUNT=2  # Adjusted if needed to allow more IPs
-IP_RETENTION_DAYS=2
+LOCK_FILE="$WORK_DIR/getpara.lock"
+MAX_IP_COUNT=3
+RETENTION_DAYS=7
+RETRY_DELAY=2
+MAX_RETRIES=3
+RIPE_API_URL="https://stat.ripe.net/data/resolvedns/data.json"
 
-# Setup and cleanup environment
-if [ ! -f "$TEMP_IP_FILE" ]; then
-    echo "Creating $TEMP_IP_FILE as it does not exist."
-    touch "$TEMP_IP_FILE"
-fi
+# DNS Infrastructure
+DNS_TIMEOUT=2                      # Seconds per DNS query
+RESOLVER_DELAY=1                   # Seconds between resolver attempts
+SYSTEM_RESOLVERS=$(grep '^nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}')
+FALLBACK_DNS="8.8.8.8 1.1.1.1 9.9.9.9"
+DNS_CHECK_DOMAINS="example.com example.net example.org"
 
-# Function to log messages with timestamps
+# Security Hardening
+umask 077
+PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin"
+CURL_OPTIONS="--silent --max-time 10 --retry 2 --proto-default https"
+
+# Atomic Logging System
 log() {
-    echo "$(date "+%Y-%m-%d %H:%M:%S") - $1" >> "$LOG_FILE"
+    entry="$(date "+%Y-%m-%d %H:%M:%S") - $1"
+    echo "$entry" >> "$LOG_FILE"
+    chmod 600 "$LOG_FILE"          # Maintain strict permissions
+    logger -t "pf-updater" "$1"    # Syslog integration
 }
 
-# Function to validate an IP address
-is_valid_ip() {
-    local ip=$1
-    if echo "$ip" | grep -Eq "^([0-9]{1,3}\.){3}[0-9]{1,3}$"; then
+# Validation Routines
+validate_ip() {
+    echo "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+}
+
+validate_fqdn() {
+    echo "$1" | grep -Eq '^([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$'
+}
+
+# Resolver Infrastructure
+resolver_health_check() {
+    for resolver in $SYSTEM_RESOLVERS $FALLBACK_DNS; do
+        log "Testing resolver: $resolver"
+        if dig +time=$DNS_TIMEOUT +tries=1 +retry=0 @"$resolver" $DNS_CHECK_DOMAINS >/dev/null 2>&1; then
+            log "Resolver operational: $resolver"
+            return 0
+        fi
+        sleep $RESOLVER_DELAY
+    done
+    log "CRITICAL: All DNS resolvers offline"
+    return 1
+}
+
+resolver_sequence() {
+    fqdn=$1
+    for resolver in $SYSTEM_RESOLVERS $FALLBACK_DNS; do
+        log "Attempting resolution via $resolver"
+        ip=$(dig +time=$DNS_TIMEOUT +short @"$resolver" "$fqdn" 2>/dev/null | \
+            grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | head -1)
+        
+        [ -n "$ip" ] && validate_ip "$ip" && { echo "$ip"; return 0; }
+        sleep $RESOLVER_DELAY
+    done
+    return 1
+}
+
+# Package Assurance
+verify_dependencies() {
+    for pkg in pfctl awk curl jq dig; do
+        if ! command -v $pkg >/dev/null; then
+            log "Dependency missing: $pkg"
+            pkg_add -I "$pkg" || { log "Failed to install $pkg"; exit 3; }
+        fi
+    done
+}
+
+# Concurrency Control
+establish_lock() {
+    if [ -f "$LOCK_FILE" ]; then
+        LOCK_AGE=$(($(date +%s) - $(stat -f %m "$LOCK_FILE")))
+        [ $LOCK_AGE -gt 300 ] && rm -f "$LOCK_FILE" || { log "Active lock detected"; exit 1; }
+    fi
+    trap 'rm -f "$LOCK_FILE"' EXIT
+    > "$LOCK_FILE"
+}
+
+# Resolution Workflow
+resolve_with_fallback() {
+    fqdn=$1
+    validate_fqdn "$fqdn" || { log "Invalid FQDN: $fqdn"; return 1; }
+
+    # Phase 1: RIPE API
+    log "Initiating RIPE API query for $fqdn"
+    response=$(curl $CURL_OPTIONS "$RIPE_API_URL?resource=$fqdn&type=A")
+    ripe_ip=$(echo "$response" | jq -r '.data.records[0][0].value' 2>/dev/null)
+    
+    if validate_ip "$ripe_ip"; then
+        log "RIPE resolution successful: $ripe_ip"
+        echo "$ripe_ip"
         return 0
-    else
-        return 1
     fi
+
+    # Phase 2: DNS Resolver Sequence
+    log "Falling back to DNS resolution"
+    resolver_sequence "$fqdn"
 }
 
-# Function to resolve IP addresses and avoid duplicates
-resolve_ip() {
-    local FQDN=$1
-    log "Resolving IP address for $FQDN"
-    # Resolve the current IP address of the FQDN
-    CURRENT_IP=$(dig +short $FQDN | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')
-    CURRENT_TIMESTAMP=$(date +%s)
+# PF Table Management
+update_pf_table() {
+    log "Compiling PF table entries"
+    echo -e "$resolved_ips" | awk -v max=$MAX_IP_COUNT '
+        !seen[$1]++ { print $1 }
+        NR >= max { exit }
+    ' > "$FINAL_IP_FILE"
 
-    # Exit if no valid IP is resolved
-    if [ -z "$CURRENT_IP" ] || ! is_valid_ip "$CURRENT_IP"; then
-        log "No valid IP address found for $FQDN"
-        return
-    fi
-
-    # Check if the IP already exists in the TEMP_IP_FILE to avoid duplicates
-    if ! grep -q "$CURRENT_IP" "$TEMP_IP_FILE"; then
-        # Append current IP with timestamp to TEMP_IP_FILE for processing
-        echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
-        log "Added IP $CURRENT_IP to $TEMP_IP_FILE"
-    else
-        log "IP $CURRENT_IP already exists in $TEMP_IP_FILE, not adding again."
-    fi
+    [ -s "$FINAL_IP_FILE" ] && {
+        log "Executing atomic PF table update"
+        pfctl -t dynamic_hosts -T replace -f "$FINAL_IP_FILE" || {
+            log "PF update failed - preserving previous state";
+            return 1;
+        }
+    }
 }
 
-# Ensure FINAL_IP_FILE exists
-if [ ! -f "$FINAL_IP_FILE" ]; then
-    echo "Creating $FINAL_IP_FILE as it does not exist."
-    touch "$FINAL_IP_FILE"
-fi
+# Main Execution Flow
+establish_lock
+log "=== INITIALIZING FIREWALL UPDATE ==="
+log "Resolver hierarchy: System: [$SYSTEM_RESOLVERS] → Fallbacks: [$FALLBACK_DNS]"
 
-# Resolve IPs for both FQDNs
-resolve_ip $FQDN1
-resolve_ip $FQDN2
+verify_dependencies
+resolver_health_check || { log "DNS infrastructure failure"; exit 2; }
 
-# Process TEMP_IP_FILE to ensure uniqueness, limit the number of IPs, and consider the retention period
-log "Processing $TEMP_IP_FILE to update $FINAL_IP_FILE"
-awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$(date +%s) '{
-    timestamp = $1
-    ip = $2
-    if (!seen[ip]++ && (current_time - timestamp) <= (retention_days * 86400)) {
-        print ip
-        if (++count >= max_count) exit
-    }
-}' "$TEMP_IP_FILE" | sort -u | tail -n $MAX_IP_COUNT > "$FINAL_IP_FILE"
+# Resolution Pipeline
+resolved_ips=""
+for fqdn in $FQDNS; do
+    ip=$(resolve_with_fallback "$fqdn") && {
+        resolved_ips="$resolved_ips\n$ip"
+        log "Resolution confirmed: $fqdn → $ip"
+    } || log "Resolution failed: $fqdn"
+done
 
-# Cleanup old entries from TEMP_IP_FILE
-log "Cleaning up old entries from $TEMP_IP_FILE"
-awk -v current_time=$(date +%s) -v retention_days=$IP_RETENTION_DAYS '{
-    timestamp = $1
-    if ((current_time - timestamp) <= (retention_days * 86400)) {
-        print $0
-    }
-}' "$TEMP_IP_FILE" > "${TEMP_IP_FILE}.tmp" && mv "${TEMP_IP_FILE}.tmp" "$TEMP_IP_FILE"
-
-# Check if there are any changes
-if [ "$(wc -l < "$FINAL_IP_FILE")" -eq 0 ]; then
-    log "No changes."
-else
-    # Reload the PF table with the updated IP list
-    log "Reloading PF table 'dynamic_hosts' with updated IP list from $FINAL_IP_FILE"
-    pfctl -t dynamic_hosts -T replace -f "$FINAL_IP_FILE" && log "PF table 'dynamic_hosts' reloaded with updated IP list."
-
-    # Output the contents of the PF table
-    log "Contents of PF table 'dynamic_hosts':"
-    pfctl -t dynamic_hosts -T show >> "$LOG_FILE"
-fi
-
-# Log completion message
-log "Firewall update complete."
+update_pf_table
+log "=== FIREWALL UPDATE COMPLETED ==="
 ```
-### Wireguards
 
-- After you installed the package via `pkg_add wireguard-tools`,your gateways `wg0.conf` looks like this on `/etc/wireguard/wg0.conf`and you can trigger restarts for the interface like `wg-quick down wg0 && sleep 5 && wg-quick up wg0`.
-- You generate client priv and pub keys via ` sh -c 'umask 077; wg genkey | tee privatekey | wg pubkey > publickey'`
-- You can have your entire infrastructure within nested wireguards, increasing trust per interface
+### E. VPN Configuration
+#### E.1. WireGuard Setup - Kernel Mode (OpenBSD 7.6+)
+- Guide: https://docs.vultr.com/install-wireguard-vpn-server-on-openbsd-7-0
+- **Important:** OpenBSD now includes WireGuard in the kernel, providing better performance and integration
 
-Server side:
+**Installation:**
+```bash
+# Install WireGuard tools
+pkg_add wireguard-tools
+
+# Generate server keys
+sh -c 'umask 077; wg genkey | tee /etc/wireguard/server-private.key | wg pubkey > /etc/wireguard/server-public.key'
+
+# Generate client keys (repeat for each client)
+sh -c 'umask 077; wg genkey | tee client-private.key | wg pubkey > client-public.key'
+```
+
+#### E.2. Server Configuration
+
+**Step 1: Create WireGuard configuration file**
+- Save as `/etc/wireguard/wg0.conf`:
 ```
 [Interface]
-Address = 10.0.0.1/24
+# Note: Address removed for kernel mode - configured in hostname.wg0
 ListenPort = 51820
-PrivateKey = gateways-private-key
+PrivateKey = YOUR_SERVER_PRIVATE_KEY_HERE
 
 [Peer]
-PublicKey = publickey-client1
+# Client 1
+PublicKey = CLIENT1_PUBLIC_KEY_HERE
 AllowedIPs = 10.0.0.2/32
 
 [Peer]
-PublicKey = publickey-client-2
+# Client 2  
+PublicKey = CLIENT2_PUBLIC_KEY_HERE
 AllowedIPs = 10.0.0.3/32
-```
-Client side:
-
-```
-[Interface]
-PrivateKey = client-private-key
-#DNS=10.0.0.1
-Address = 10.0.0.2/24
-#ListenPort=
 
 [Peer]
-PublicKey =  server-pubkey
+# Client 3
+PublicKey = CLIENT3_PUBLIC_KEY_HERE
+AllowedIPs = 10.0.0.4/32
+```
+
+**Step 2: Create kernel mode interface configuration**
+- Create `/etc/hostname.wg0`:
+```
+inet 10.0.0.1 255.255.255.0 NONE
+#mtu 1420
+!/usr/local/bin/wg setconf wg0 /etc/wireguard/wg0.conf
+up
+```
+
+**Step 3: Interface management commands**
+```bash
+# Start WireGuard interface
+sh /etc/netstart wg0
+
+# Stop WireGuard interface  
+ifconfig wg0 destroy
+
+# Restart WireGuard interface
+ifconfig wg0 destroy && sh /etc/netstart wg0
+
+# Check interface status
+ifconfig wg0
+wg show wg0
+
+# View WireGuard configuration
+wg showconf wg0
+```
+
+#### E.3. Client Configuration
+
+**Desktop/Mobile Client Example:**
+```
+[Interface]
+PrivateKey = CLIENT_PRIVATE_KEY_HERE
+Address = 10.0.0.2/24
+DNS = 10.0.0.1
+
+[Peer]
+PublicKey = SERVER_PUBLIC_KEY_HERE
 AllowedIPs = 10.0.0.0/24
-Endpoint = public-gateway-ip:51820
-PersistentKeepalive = 15
+Endpoint = YOUR_SERVER_PUBLIC_IP:51820
+PersistentKeepalive = 25
 ```
 
-- Congrats, You arere already done at this point, you only allow static IPs to connect, everything else is inside a VPN tunnel that only allows connecting from whitelisted fqdns!
-- Always room for improvement, add encrypted DNS, as well as an addblocker
-  
-### Optional DNS 
-#### Option 1: ODOH via Cloudflare
-- You work on `/etc/dnscrypt-proxy.toml`
-- Use the Guide from here:  SwaroopGiri: (https://github.com/SwaroopGiri/Pihole-with-Anonymized-ODOH)
-- The DNScrypt runs at 127.0.0.1@54, which Unbound at 127.0.0.1@53 will just forward requests to, while only accessible from Wireguard clients:
+**Full Tunnel Client (Route all traffic through VPN):**
+```
+[Interface]
+PrivateKey = CLIENT_PRIVATE_KEY_HERE
+Address = 10.0.0.2/24
+DNS = 10.0.0.1
 
-- Here is how you add the dnscrypt proxy package and check paths, plus how to do restarts and enabling of it
-```
-pkg_add dnscrypt-proxy
-pkg_info -L dnscrypt-proxy
-...
-rcctl enable dnscrypt_proxy
-rcctl restart unbound
-rcctl restart dnscrypt_proxy
-```
-  - Important settings from the guide :
-```
-server_names = ['odoh-cloudflare']
-odoh_servers = true
-require_dnssec = true   
-require_nofilter = true # this parameter depends on your relay selected next
-cache = false   
-```
-- Enable sources:
-```
-[sources.odoh-servers]
-   urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/odoh-servers.md', 'https://download.dnscrypt.info/resolvers-list/v3/odoh-servers.md', 'https://ipv6.download.dnscrypt.info/resolvers-list/v3/odoh-servers.md']
-   cache_file = 'odoh-servers.md'
-   minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
-   refresh_delay = 24
-   prefix = ''
-[sources.odoh-relays]
-   urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/odoh-relays.md', 'https://download.dnscrypt.info/resolvers-list/v3/odoh-relays.md', 'https://ipv6.download.dnscrypt.info/resolvers-list/v3/odoh-relays.md']
-   cache_file = 'odoh-relays.md'
-   minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
-   refresh_delay = 24
-   prefix = ''
-```
-- Select relays via https://github.com/DNSCrypt/dnscrypt-resolvers/blob/master/v3/odoh-relays.md
-
-```
-routes = [
-     { server_name='odoh-cloudflare', via=['odohrelay-your-pick1', 'oodohrelay-your-pick2'] },
-     { server_name='odohrelay-koki-ams', via=['odohrelay-koki-ams', 'odohrelay-koki-bcn'] }
- ]
-```
-#### Unbound for ODoH
-- We use Unbound for DNs, the config is at ` /var/unbound/etc/unbound.conf `
-- The config is as simple as forwarding to the dnscrypt, uncomment the rest
-
-```
-server:
-	interface: 0.0.0.0@53
-	do-ip6: no
-	access-control: 10.0.0.0/24 allow
-	access-control: 0.0.0.0/0 refuse
-	access-control: ::0/0 refuse
-	
-	forward-zone:
-    		name: "."
-        	forward-addr: 127.0.0.1@54
-
-#Include the blocklist for ads
-include: "/home/lowpriv_user/blacklist.conf"
-```
-  
-#### Option 2: DOT via Quad9
-- We use Unbound for DoT and can skip dnscrypt, the config is at ` /var/unbound/etc/unbound.conf `
-```
-# example config from: https://nurdletech.com/linux-notes/dns/unbound.html
-server:
-	interface: 0.0.0.0@53
-	#interface: 127.0.0.1@5353	# listen on alternative port
-	#interface: ::1
-	do-ip6: no
-#	do-udp: yes
-#	do-tcp: yes
-	
-	auto-trust-anchor-file: "/var/unbound/db/root.key"
-	tls-cert-bundle: "/etc/ssl/cert.pem"
-
-	access-control: 10.0.0.0/24 allow
-	access-control: 0.0.0.0/0 refuse
-	access-control: ::0/0 refuse
-
-	forward-zone:
-    		name: "."
-		forward-tls-upstream: yes		# use DNS-over-TLS forwarder
-# 	hide-identity: yes
-#	hide-version: yes
-
-        # Cloudflare pick
-	#	forward-addr: 1.1.1.1@53
-	#	forward-addr: 2606:4700:4700::1111@853#cloudflare-dns.com
-  	#       forward-addr: 1.1.1.1@853#cloudflare-dns.com
- 	#	forward-addr: 2606:4700:4700::1001@853#cloudflare-dns.com
-    	#	forward-addr: 1.0.0.1@853#cloudflare-dns.com
-        # Quad9 pick
-	       forward-addr: 2620:fe::fe@853#dns.quad9.net
-	       forward-addr: 9.9.9.9@853#dns.quad9.net
-	       forward-addr: 2620:fe::9@853#dns.quad9.net
-	       forward-addr: 149.112.112.112@853#dns.quad9.net
-
- # Include the blocklist for ads
-include: "/home/lowpriv_user/blacklist.conf"
-```
-- In case you still need to generate the key:
-```
-unbound-anchor -a /var/unbound/db/root.key
+[Peer]
+PublicKey = SERVER_PUBLIC_KEY_HERE
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = YOUR_SERVER_PUBLIC_IP:51820
+PersistentKeepalive = 25
 ```
 
-#### Optional Linux side for dynamic IP adding
+#### E.4. Kernel Mode Migration
 
-- Here is the same  `/usr/local/getpara.sh` but adjusted for Linux:
+**Migrating from userspace to kernel mode:**
+```bash
+# Stop userspace WireGuard (if running)
+wg-quick down wg0
+
+# Remove old interface (if exists)
+ifconfig wg0 destroy 2>/dev/null || true
+
+# Create kernel mode interface
+sh /etc/netstart wg0
+
+# Verify kernel mode is active
+ifconfig wg0 | grep "groups: wg"
 ```
+
+#### E.5. Troubleshooting
+
+**Common commands for debugging:**
+```bash
+# Check if WireGuard module is loaded
+dmesg | grep -i wireguard
+
+# View interface details
+ifconfig wg0
+
+# Check WireGuard peer status
+wg show
+
+# Monitor traffic
+wg show wg0 transfer
+
+# Check routing
+route -n show -inet | grep 10.0.0
+
+# Test connectivity from client
+ping 10.0.0.1
+```
+
+**Performance verification:**
+```bash
+# Check if using kernel implementation
+ifconfig wg0 | grep "groups: wg"
+
+# Monitor CPU usage during transfer
+top -d1 | grep wg
+```
+
+#### E.6. Security Notes
+
+- **Key Management:** Store private keys with `600` permissions
+- **Firewall Integration:** Ensure PF rules allow WireGuard traffic (port 51820/UDP)
+- **Network Isolation:** Use dedicated subnet (10.0.0.0/24) for VPN clients
+- **Regular Key Rotation:** Consider rotating keys periodically for enhanced security
+- **Monitoring:** Monitor connection logs and unusual traffic patterns
+
+**Congratulations!** You now have a kernel-mode WireGuard VPN that only allows connections from whitelisted FQDNs, with all traffic secured within the VPN tunnel. The next steps are to add encrypted DNS and ad blocking for complete security coverage.
+
+### F. DNS Configuration
+
+#### F.0 fastest way via podman / docker for an adguard home
+
+``` 
 #!/bin/bash
 
-# FQDNs
-FQDN1="myhost1.mydnsprovider.com"
-FQDN2="myhost2.mydnsprovider.com"
+# =========================================================================
+# ADGUARD HOME DEPLOYMENT SCRIPT V3 - COMPREHENSIVE PRODUCTION SETUP
+# =========================================================================
+# Purpose: Deploy AdGuard Home with DoT/DoH/DoQ, performance optimization
+# Features: Self-signed certs, SELinux-aware, resource constraints
+# Last Modified: 2025-01-XX
+# =========================================================================
 
-# Variables
-WORK_DIR="/usr/local"
-TEMP_IP_FILE="$WORK_DIR/temp_gotten_para"
-FINAL_IP_FILE="$WORK_DIR/gotten-para"
-LOG_FILE="$WORK_DIR/firewall_update.log"
+set -euo pipefail
 
-MAX_IP_COUNT=2
-IP_RETENTION_DAYS=2
-IP_SET_NAME="dynamic_hosts"
-PUBLIC_ZONE="public"
-WIREGUARD_PORT="51820"  # WireGuard port for the public interface
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ADGUARD_DIR="${SCRIPT_DIR}/adguard-home"
+CONTAINER_NAME="adguard-home"
+IMAGE_NAME="adguard/adguardhome:latest"
 
-# Setup and cleanup environment
-> "$TEMP_IP_FILE"
-> "$FINAL_IP_FILE"
-touch "$LOG_FILE"
-exec 3>&1 1>>"$LOG_FILE" 2>&1
+# Network Configuration (sanitized)
+ADGUARD_IP="10.0.0.33"
+NETWORK_SUBNET="10.0.0.0/24"
+DNS_UPSTREAM_1="1.1.1.1"
+DNS_UPSTREAM_2="cloudflare.com"
+
+# Resource Constraints
+MEMORY_LIMIT="12g"
+CPU_LIMIT="3"
+SWAP_LIMIT="2g"
+
+# Logging
+LOG_FILE="${SCRIPT_DIR}/adguard-deployment.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 log() {
-    echo "$(date "+%Y-%m-%d %H:%M:%S") - $1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
-execute_command() {
-    echo "Executing command: ${*}" >&3
-    "${@}"
-    local status=$?
-    if [ $status -ne 0 ]; then
-        log "ERROR: Failed to execute: ${*}"
-        exit $status
-    else
-        log "SUCCESS: Executed: ${*}"
-    fi
-}
+log "=== AdGuard Home Deployment Started ==="
 
-ensure_files_exist() {
-    touch "$1" 2>/dev/null || {
-        log "Failed to touch $1. Check permissions."
-        exit 1
-    }
-}
+# Create directory structure
+log "Creating directory structure..."
+mkdir -p "${ADGUARD_DIR}"/{conf,work,ssl,logs}
+chmod 755 "${ADGUARD_DIR}"
+chmod 755 "${ADGUARD_DIR}"/{conf,work,ssl,logs}
 
-ensure_files_exist "$TEMP_IP_FILE"
-ensure_files_exist "$FINAL_IP_FILE"
+# Generate self-signed certificates for DoT/DoH/DoQ
+log "Generating self-signed certificates..."
+openssl req -x509 -newkey rsa:4096 -keyout "${ADGUARD_DIR}/ssl/server.key" \
+    -out "${ADGUARD_DIR}/ssl/server.crt" -days 3650 -nodes \
+    -subj "/C=US/ST=State/L=City/O=Organization/CN=${ADGUARD_IP}" \
+    -addext "subjectAltName=IP:${ADGUARD_IP},IP:127.0.0.1,DNS:localhost"
 
-resolve_ip() {
-    local FQDN=$1
-    local CURRENT_IP=$(dig +short "$FQDN" | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}$')
-    local CURRENT_TIMESTAMP=$(date +%s)
+# Set proper permissions for certificates
+chmod 644 "${ADGUARD_DIR}/ssl/server.crt"
+chmod 600 "${ADGUARD_DIR}/ssl/server.key"
 
-    if [ -z "$CURRENT_IP" ]; then
-        log "No valid IP address found for $FQDN"
-        return 1
-    fi
+# Create comprehensive AdGuardHome.yaml configuration
+log "Creating AdGuardHome.yaml configuration..."
+cat > "${ADGUARD_DIR}/conf/AdGuardHome.yaml" << 'EOF'
+# AdGuard Home Configuration - Production Optimized
+# Generated: 2025-01-XX
 
-    if ! grep -q "$CURRENT_TIMESTAMP $CURRENT_IP" "$TEMP_IP_FILE"; then
-        echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
-        log "Added IP $CURRENT_IP to $TEMP_IP_FILE"
-    else
-        log "Duplicate IP entry for $CURRENT_IP at $CURRENT_TIMESTAMP skipped"
-    fi
-}
+http:
+  address: 0.0.0.0:3000
+  session_ttl: 720h
 
-if ! resolve_ip $FQDN1; then
-    log "Failed to resolve $FQDN1"
-fi
+users:
+  - name: admin
+    password: $2a$10$example.hash.replace.with.your.own.bcrypt.hash
 
-if ! resolve_ip $FQDN2; then
-    log "Failed to resolve $FQDN2"
-fi
+auth_attempts: 5
+block_auth_min: 15
 
-log "Processing $TEMP_IP_FILE to update $FINAL_IP_FILE"
-awk -v max_count=$MAX_IP_COUNT -v retention_days=$IP_RETENTION_DAYS -v current_time=$(date +%s) '{
-    ip = $2
-    timestamp = $1
-    if (!seen[ip]++ && (current_time - timestamp) <= (retention_days * 86400)) {
-        print ip
-        if (++count >= max_count) exit
-    }
-}' "$TEMP_IP_FILE" | sort -u | tail -n $MAX_IP_COUNT > "$FINAL_IP_FILE"
+theme: auto
+debug_pprof: false
+web_session_ttl: 720
 
-if [ -s "$FINAL_IP_FILE" ]; then
-    log "Final IP file contains valid entries."
-else
-    log "No valid IPs resolved. Exiting script."
-    exit 0
-fi
-
-log "Current IP set entries before deletion:"
-firewall-cmd --ipset=$IP_SET_NAME --get-entries >> "$LOG_FILE" 2>/dev/null || log "IP set not found."
-
-if firewall-cmd --permanent --get-ipsets | grep -qw "$IP_SET_NAME"; then
-    log "Deleting IP set $IP_SET_NAME"
-    execute_command firewall-cmd --permanent --delete-ipset=$IP_SET_NAME
-else
-    log "IP set $IP_SET_NAME does not exist, creating a new one."
-fi
-
-execute_command firewall-cmd --permanent --new-ipset=$IP_SET_NAME --type=hash:ip
-
-log "Adding IPs to the new IP set"
-for ip in $(cat "$FINAL_IP_FILE"); do
-    execute_command firewall-cmd --permanent --ipset=$IP_SET_NAME --add-entry=$ip
-done
-
-log "Enabling WireGuard service in the public zone"
-if ! firewall-cmd --permanent --zone="$PUBLIC_ZONE" --query-port="$WIREGUARD_PORT"/udp; then
-    execute_command firewall-cmd --permanent --zone="$PUBLIC_ZONE" --add-port="$WIREGUARD_PORT"/udp
-fi
-
-execute_command firewall-cmd --reload
-
-log "Firewall and WireGuard rules updated with latest IPs."
-
-exec 1>&3 3>&-
-echo "Firewall update complete. See $LOG_FILE for details."
-
-```
-- In case we wanna confirm para entries:
-```
-firewall-cmd --ipset=dynamic_hosts --get-entries
-```
-- In case we wanna remove entries:
-```
-firewall-cmd --ipset=dynamic_hosts --get-entries | xargs -I{} firewall-cmd --permanent --ipset=dynamic_hosts --remove-entry={} && firewall-cmd --reload
-```
-- We need to also add this to the cronjob of the Linux server, for example on reboot and 12 hours:
-```
-@reboot /bin/sleep 30 && /usr/local/getpara.sh
-0 0,12 * * * /usr/local/getpara.sh
-```
-
-#### Optional Addblocking
-- Reference on the top to the original one, I only care about OpenBSD and want this to be ran on a lowpriv user for it!
-- Please add your own custom lists, I prefer to not show mine!
-- You could save this at ` /home/lowpriv_user/blocklister.sh` with an own account on a user named `lowpriv_user`
-- Get the lowpriv_user to run this daily, unbound has an `include` for it.
+dns:
+  bind_hosts:
+    - 0.0.0.0
+  port: 53
   
+  # Statistics and query logging
+  statistics_interval: 24h
+  querylog_enabled: true
+  querylog_file_enabled: true
+  querylog_interval: 2160h
+  querylog_size_memory: 1000
+  
+  # Anonymization
+  anonymize_client_ip: true
+  
+  # Performance settings
+  protection_enabled: true
+  blocking_mode: default
+  blocking_ipv4: ""
+  blocking_ipv6: ""
+  blocked_response_ttl: 10
+  parental_block_host: family-block.dns.adguard.com
+  safebrowsing_block_host: standard-block.dns.adguard.com
+  
+  # Rewrites and custom rules
+  rewrites: []
+  blocked_services: []
+  upstream_timeout: 10s
+  
+  # Bootstrap DNS
+  bootstrap_dns:
+    - 1.1.1.1:53
+    - 8.8.8.8:53
+    - 2606:4700:4700::1111
+    - 2001:4860:4860::8888
+  
+  # Upstream DNS servers with DoT/DoH
+  upstream_dns:
+    - tls://1.1.1.1
+    - tls://1.0.0.1
+    - https://cloudflare-dns.com/dns-query
+    - tls://8.8.8.8
+    - tls://8.8.4.4
+    - https://dns.google/dns-query
+    - tls://9.9.9.9
+    - https://dns.quad9.net/dns-query
+  
+  # Upstream mode
+  upstream_mode: load_balance
+  fastest_timeout: 1s
+  
+  # Cache settings
+  cache_size: 4194304
+  cache_ttl_min: 0
+  cache_ttl_max: 86400
+  cache_optimistic: true
+  
+  # DNSSEC
+  enable_dnssec: true
+  
+  # EDNS Client Subnet
+  edns_client_subnet:
+    custom_ip: ""
+    enabled: false
+    use_custom: false
+  
+  # Rate limiting
+  ratelimit: 20
+  ratelimit_whitelist: []
+  
+  # Refuse ANY requests
+  refuse_any: true
+  
+  # IPv6 settings
+  resolve_clients: true
+  use_private_ptr_resolvers: true
+  local_ptr_upstreams: []
+  
+  # Filtering settings
+  filtering_enabled: true
+  filters_update_interval: 24
+  parental_enabled: false
+  safesearch_enabled: false
+  safebrowsing_enabled: true
+  
+  # Custom filtering rules
+  user_rules:
+    - "||example-ads.com^"
+    - "||tracking.example.com^"
+    - "@@||allowlist.example.com^"
+
+# TLS Configuration for DoT/DoH/DoQ
+tls:
+  enabled: true
+  server_name: ""
+  force_https: false
+  port_https: 443
+  port_dns_over_tls: 853
+  port_dns_over_quic: 853
+  certificate_chain: "/opt/adguardhome/ssl/server.crt"
+  private_key: "/opt/adguardhome/ssl/server.key"
+  certificate_path: ""
+  private_key_path: ""
+  strict_sni_check: false
+
+# Filters - Production-ready filter lists
+filters:
+  - enabled: true
+    url: https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt
+    name: AdGuard DNS filter
+    id: 1
+  
+  - enabled: true
+    url: https://raw.githubusercontent.com/AdguardTeam/cname-trackers/master/combined_disguised_trackers_justdomains.txt
+    name: AdGuard CNAME-cloaked trackers
+    id: 2
+
+
+# Whitelist filters
+whitelist_filters: []
+
+# DHCP settings (disabled by default)
+dhcp:
+  enabled: false
+  interface_name: ""
+  local_domain_name: lan
+  dhcpv4:
+    gateway_ip: ""
+    subnet_mask: ""
+    range_start: ""
+    range_end: ""
+    lease_duration: 86400
+    icmp_timeout_msec: 1000
+    options: []
+  dhcpv6:
+    range_start: ""
+    lease_duration: 86400
+    ra_slaac_only: false
+    ra_allow_slaac: false
+
+# Client settings
+clients:
+  runtime_sources:
+    whois: true
+    arp: true
+    rdns: true
+    dhcp: true
+    hosts: true
+  persistent: []
+
+# Log settings
+log_file: ""
+log_max_backups: 0
+log_max_size: 100
+log_max_age: 3
+log_compress: false
+log_localtime: false
+verbose: false
+
+# OS settings
+os:
+  group: ""
+  user: ""
+  rlimit_nofile: 0
+
+# Schema version
+schema_version: 20
+EOF
+
+# Stop and remove existing container if it exists
+log "Stopping and removing existing container..."
+if podman ps -a --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+    podman stop "${CONTAINER_NAME}" || true
+    podman rm "${CONTAINER_NAME}" || true
+fi
+
+# Pull latest AdGuard Home image
+log "Pulling latest AdGuard Home image..."
+podman pull "${IMAGE_NAME}"
+
+# SELinux context setup (if SELinux is enabled)
+if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" != "Disabled" ]; then
+    log "Setting SELinux contexts..."
+    sudo setsebool -P container_manage_cgroup true
+    sudo semanage fcontext -a -t container_file_t "${ADGUARD_DIR}(/.*)?" 2>/dev/null || true
+    sudo restorecon -R "${ADGUARD_DIR}"
+fi
+
+# Create and start AdGuard Home container
+log "Creating AdGuard Home container..."
+podman run -d \
+    --name "${CONTAINER_NAME}" \
+    --restart=unless-stopped \
+    --memory="${MEMORY_LIMIT}" \
+    --cpus="${CPU_LIMIT}" \
+    --memory-swap="${SWAP_LIMIT}" \
+    --security-opt label=disable \
+    --cap-drop=ALL \
+    --cap-add=NET_BIND_SERVICE \
+    --cap-add=CHOWN \
+    --cap-add=SETUID \
+    --cap-add=SETGID \
+    -p 53:53/tcp \
+    -p 53:53/udp \
+    -p 3000:3000/tcp \
+    -p 443:443/tcp \
+    -p 443:443/udp \
+    -p 853:853/tcp \
+    -p 853:853/udp \
+    -v "${ADGUARD_DIR}/work:/opt/adguardhome/work:Z" \
+    -v "${ADGUARD_DIR}/conf:/opt/adguardhome/conf:Z" \
+    -v "${ADGUARD_DIR}/ssl:/opt/adguardhome/ssl:Z" \
+    "${IMAGE_NAME}"
+
+# Wait for container to start
+log "Waiting for AdGuard Home to start..."
+sleep 10
+
+# Verify container is running
+if podman ps --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
+    log "✓ AdGuard Home container started successfully"
+    
+    # Display connection information
+    log "=== AdGuard Home Access Information ==="
+    log "Web Interface: http://localhost:3000"
+    log "DNS Server: ${ADGUARD_IP}:53"
+    log "DNS over TLS: ${ADGUARD_IP}:853"
+    log "DNS over HTTPS: https://${ADGUARD_IP}/dns-query"
+    log "DNS over QUIC: quic://${ADGUARD_IP}:853"
+    log ""
+    log "Default credentials:"
+    log "Username: admin"
+    log "Password: [Set during initial setup]"
+    log ""
+    log "Certificate files:"
+    log "Certificate: ${ADGUARD_DIR}/ssl/server.crt"
+    log "Private Key: ${ADGUARD_DIR}/ssl/server.key"
+    
+    # Show container status
+    log "=== Container Status ==="
+    podman ps --filter "name=${CONTAINER_NAME}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    
+    # Show resource usage
+    log "=== Resource Usage ==="
+    podman stats --no-stream "${CONTAINER_NAME}" --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+    
+else
+    log "✗ Failed to start AdGuard Home container"
+    log "Container logs:"
+    podman logs "${CONTAINER_NAME}"
+    exit 1
+fi
+
+# Create systemd service for auto-start (optional)
+log "Creating systemd service..."
+mkdir -p ~/.config/systemd/user
+
+cat > ~/.config/systemd/user/adguard-home.service << EOF
+[Unit]
+Description=AdGuard Home Container
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=%t/containers
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Restart=on-failure
+TimeoutStopSec=70
+ExecStart=/usr/bin/podman start ${CONTAINER_NAME}
+ExecStop=/usr/bin/podman stop -t 10 ${CONTAINER_NAME}
+Type=forking
+PIDFile=%t/%n.pid
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Enable systemd service
+systemctl --user daemon-reload
+systemctl --user enable adguard-home.service
+
+log "=== Deployment Complete ==="
+log "AdGuard Home has been successfully deployed!"
+log "Configuration file: ${ADGUARD_DIR}/conf/AdGuardHome.yaml"
+log "Log file: ${LOG_FILE}"
+log ""
+log "Next steps:"
+log "1. Access web interface at http://localhost:3000"
+log "2. Complete initial setup wizard"
+log "3. Configure your devices to use ${ADGUARD_IP} as DNS server"
+log "4. Test encrypted DNS: dig @${ADGUARD_IP} -p 853 +tls-ca=${ADGUARD_DIR}/ssl/server.crt example.com"
+log ""
+log "To manage the container:"
+log "  Start:   podman start ${CONTAINER_NAME}"
+log "  Stop:    podman stop ${CONTAINER_NAME}"
+log "  Logs:    podman logs ${CONTAINER_NAME}"
+log "  Status:  podman ps -a --filter name=${CONTAINER_NAME}"
 ```
+
+### G. Linux Dynamic IP Management
+
+```
+- enable restart initialize cache
+pkg_add -u
+pkg_add squid
+rcctl enable squid
+rcctl restart squid
+squid -z #this is requred or it will not work
+```
+
+#### Squid Configuration
+- Save as `/etc/squid/squid.conf`
+```
+#################################################################
+# ULTIMATE PARANOID SQUID CONFIG – OpenBSD 7.6 / Squid 6.10 (v1.1)
+# posture-aware header sets · full XFF removal · 2025-05-22
+#################################################################
+
+#########################
+# CORE NETWORK SETTINGS #
+#########################
+http_port                10.0.0.1:3128
+tcp_outgoing_address     10.0.0.1
+visible_hostname         your-server.local
+via                      off
+forwarded_for            delete    
+follow_x_forwarded_for   deny all
+httpd_suppress_version_string on
+#connection_auth          allow none
+
+# DNS (Unbound ➜ WireGuard peer)
+dns_nameservers          127.0.0.1 10.0.0.1
+dns_v4_first             on
+dns_defnames             off
+
+##################
+# CACHE DISABLED #
+##################
+cache_mem                0 MB
+memory_cache_mode        disk
+cache deny               all
+cache_dir ufs /var/squid/cache 100 16 256
+coredump_dir /var/squid/cache
+
+##########################
+#   ACLS – SOURCE        #
+##########################
+acl localnet     src 10.0.0.0/24
+acl localhost    src 127.0.0.1/32
+
+##########################
+#   ACLS – DESTINATION   #
+##########################
+acl local_dests  dst 10.0.0.0/24
+always_direct    allow local_dests
+
+##########################
+#   ACLS – PORTS/METHODS #
+##########################
+acl SSL_ports     port 443
+acl Safe_ports    port 80 443
+acl Safe_methods  method GET HEAD POST OPTIONS CONNECT
+
+#######################
+#  POSTURE SELECTORS  #
+#######################
+acl mode_defensive  note posture:def
+acl mode_offensive  note posture:off
+
+##########################
+#    MAIN ACCESS RULES   #
+##########################
+http_access deny  !Safe_ports
+http_access deny  CONNECT !SSL_ports
+http_access deny  !Safe_methods
+
+http_access allow localhost
+http_access allow localnet
+http_access deny  all
+
+#################################################################
+#                       PRIVACY  — REQUEST                      #
+#################################################################
+
+# 0) wipe or set generic User-Agent
+request_header_replace   User-Agent ""        all
+request_header_replace   User-Agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" mode_offensive
+
+# 0.1) Normalise languages
+request_header_replace   Accept-Language "en-US,en;q=0.9"
+
+# 1) tracking headers
+request_header_access    From                      deny all
+request_header_access    Referer                   deny all
+request_header_access    Cookie                    deny all
+request_header_access    DNT                       deny all
+request_header_access    X-Forwarded-For           deny all
+request_header_access    Proxy-Connection          deny all
+request_header_access    Upgrade-Insecure-Requests deny all
+request_header_access    If-None-Match             deny all   
+request_header_access    Cache-Control             deny all
+request_header_access    Pragma                    deny all
+request_header_access    Purpose                   deny all
+request_header_access    Early-Data                deny all
+request_header_access    Priority                  deny all
+request_header_access    Alt-Used                  deny all
+
+# 2) Client-hint headers
+acl ch_hint req_header -i ^Sec-CH-
+request_header_access    ch_hint                   deny all
+request_header_access    Accept-CH                 deny all
+request_header_access    Critical-CH               deny all
+request_header_access    Save-Data                 deny all
+
+# 3) Sec-Fetch*   (unified top-navigation look)
+request_header_replace   Sec-Fetch-Site  "cross-site"    mode_offensive
+request_header_replace   Sec-Fetch-Mode  "navigate"
+request_header_replace   Sec-Fetch-Dest  "document"
+request_header_replace   Sec-Fetch-User  "?1"
+
+# 4) Normalise core Accept*
+request_header_replace   Accept-Encoding "gzip, deflate, br"
+request_header_replace   Accept          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8" mode_offensive
+request_header_access    Accept-Charset  deny all    # keep absent
+
+# -- optional extra hardening (disabled by default) --
+# Strip Accept-Encoding entirely in defensive posture to block zstd & brotli
+# request_header_access  Accept-Encoding deny mode_defensive
+
+# allow anything else
+request_header_access    All allow all
+
+#################################################################
+#                       PRIVACY  — RESPONSE                     #
+#################################################################
+reply_header_access Server          deny all
+reply_header_access X-Powered-By    deny all
+reply_header_access X-Cache         deny all
+reply_header_access X-Cache-Lookup  deny all
+reply_header_access Via             deny all
+reply_header_access Set-Cookie      deny all
+reply_header_access Set-Cookie2     deny all
+reply_header_access ETag            deny all
+reply_header_access Last-Modified   deny all
+reply_header_access Alt-Svc         deny all     # blocks HTTP/3 hints
+reply_header_access Public-Key-Pins deny all
+reply_header_access Report-To       deny all
+reply_header_access Server-Timing   deny all
+reply_header_access X-Unique-ID     deny all
+reply_header_access All             allow all
+
+# Security extras
+reply_header_add X-Frame-Options           "DENY"
+reply_header_add X-Content-Type-Options    "nosniff"
+reply_header_add Referrer-Policy           "no-referrer"
+reply_header_add Strict-Transport-Security "max-age=31536000; includeSubDomains"
+reply_header_add Permissions-Policy        "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), usb=(), interest-cohort=()"
+
+#############################
+#         TIMEOUTS          #
+#############################
+forward_timeout              30 seconds
+connect_timeout              30 seconds
+read_timeout                 30 seconds
+request_timeout              30 seconds
+persistent_request_timeout    1 minute
+client_lifetime              15 minutes
+pconn_timeout                1 minute
+shutdown_lifetime            1 second
+half_closed_clients          off
+
+########################
+# DISABLED PROTOCOLS   #
+########################
+icp_port 0
+htcp_port 0
+snmp_port 0
+ident_lookup_access deny all
+icp_access   deny all
+htcp_access  deny all
+snmp_access  deny all
+
+####################
+# LOGGING DISABLED #
+####################
+access_log none
+cache_log   stdio:/dev/null
+pid_filename /var/squid/run/squid.pid
+
+
+#################################################################
+# === HARDENING SUGGESTIONS
+#################################################################
+# (uncomment to activate)
+#
+# request_header_replace   Sec-CH-UA          "\"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"99\""
+# request_header_replace   Sec-CH-UA-Mobile   "?0"
+# request_header_replace   Sec-CH-UA-Platform "\"Windows\""
+# request_header_access    ^Sec-CH-UA         allow all
+#
+request_header_replace   Accept-Encoding "gzip, deflate, br" mode_offensive
+request_header_access    Accept-Encoding deny mode_defensive
+
+request_header_replace   Accept "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+request_header_replace   Sec-Fetch-Site "same-site"
+#################################################################
+
+#################################################################
+# === REMOVE THE FOLLOWING LINES TO ELIMINATE UNIQUE MARKERS ===
+##################################################################
+#request_header_replace   User-Agent ""        all
+#request_header_replace   Sec-Fetch-Site  "cross-site"    mode_offensive
+#request_header_replace   Accept-Encoding "gzip, deflate, br"
+##################################################################
+
+### J. Browser Configuration
+#### J.1. Brave Hardened Wrapper
+
+This section provides a hardened Brave browser configuration that integrates with the proxy chain infrastructure. The wrapper implements two-hop proxy rotation, aggressive fingerprinting resistance, and comprehensive privacy features.
+
+**Features:**
+- Two-hop proxy rotation for enhanced anonymity
+- Chrome/125 User-Agent spoofing (Windows 10)
+- QUIC protocol disabled for consistency
+- Full header normalization and clamping
+- Site isolation with V8 security cage
+- JIT compilation disabled
+- Letterboxing for viewport fingerprinting resistance
+- Comprehensive feature blocking (WebRTC, WebGL, etc.)
+
+#### J.2. Installation and Setup
+
+**Create the desktop launcher:**
+- Save as `~/.local/share/applications/brave-hardened.desktop`:
+
+```bash
 #!/bin/sh
+############################################################################
+# Brave hardened wrapper · v1.8 (20 May 2025)
+# • Two-hop proxy rotation (10.1.0.1 → 10.0.0.33)
+# • Chrome/125 UA (Win10), QUIC-off, full header clamp
+# • Site-Isolation + V8 cage + no-JIT + letter-boxing
+############################################################################
+
+# --------- Adjust this to the exit country of your proxy chain ----------
+export TZ=America/New_York 
+
+# --------- Proxy chain ---------------------------------------------------
+P1="10.1.0.1:3128"
+P2="10.0.0.33:3128"
+export http_proxy="http://$P1"
+export https_proxy="$http_proxy"
+export ALL_PROXY="$http_proxy"
+
+# ------------------------------------------------------------------------
+exec brave \
+  --no-first-run \
+  --proxy-server="http://$P1;http://$P2" \
+  --disable-quic \
+  --dns-prefetch-disable \
+  --disable-gpu --disable-gpu-rasterization --disable-accelerated-2d-canvas \
+  --disable-3d-apis --disable-webgl --disable-webgpu --disable-webrtc \
+  --disable-plugins --disable-plugins-discovery \
+  --window-size=1920,1080 \
+  --force-device-scale-factor=1 \
+  --use-fake-device-for-media-stream \
+  --lang=en-US,en;q=0.9 \
+  --enable-features=StrictSiteIsolation,BlockInsecurePrivateNetworkRequests,ResistFingerprintingLetterboxing,V8NoJIT,V8ForceMemoryCage,MiraclePtr,FingerprintingClientRectRandomization \
+  --disable-site-isolation-trials \
+  --disable-features=AsyncDns,DnsOverHttps,UseDnsHttpsSvcbAlpn,EncryptedClientHello,ZstdContentEncoding,HighEntropyUserAgent,UserAgentClientHint,UserAgentClientHintFullVersionList,ReduceUserAgent,RawClipboard,\
+BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo,WebBluetooth,WebUSB,WebHID,WebSerial,WebNFC,WebGPU,WebRTC,GamepadButtonAxisEvents,ComputePressure,GenericSensor,GenericSensorExtraClasses,DeviceOrientation,DeviceMotionEvent,Accelerometer,Magnetometer,AmbientLightSensor,FontAccess,FontAccessChooser,BackForwardCache,UseWebP,DirectSockets,IdleDetection,FileSystemAccess,DigitalGoodsApi,SubresourceWebBundles,PrivateStateTokens,TrustTokens,WebXR,WebXRARModule,WebXRHandInput,WebCodecs,Portals,PaymentRequest,PaymentHandler,SecurePaymentConfirmation,SerialAPI,KeyboardLockAPI,ScreenWakeLock,WebShare,WebShareV2,WindowPlacement,ScreenDetailedInformation,LocalFontsAccess,BackgroundFetch,BackgroundSync,WebOTP,ContactPickerAPI,SpeechRecognition,WebSpeechSynthesisAPI,PdfOcr,OptimizationGuideHintDownloading,Prerender2,AudioServiceOutOfProcess,WebAudio \
+ --enable-features=CrossOriginOpenerPolicyByDefault,CrossOriginEmbedderPolicyCredentialless \
+  --disable-blink-features=MathMLCore,ClipboardCustomFormats,ClipboardUnsanitizedContent,AutomationControlled,ClipboardChangeEvent,ClipboardContentsId,ClipboardSvg,ClipboardItemWithDOMStringSupport,ClipboardEventTargetCanBeFocusedElement,IdleDetection,WebAudio \
+  --disable-reading-from-canvas \
+  --mask-webgl-vendor-and-renderer \
+  --blink-settings=hardwareConcurrency=8,deviceMemory=4,timezone=$(cat /etc/timezone 2>/dev/null || echo ${TZ}),audioContextSampleRate=48000,disablePlugins=true \
+  --deny-permission-prompts --no-referrers \
+  --js-flags="--jitless --liftoff --no-expose-wasm --no-wasm-tier-up" \
+  --ignore-certificate-errors \
+  "$@"
 
 
-# This script is based on the version of 2020 Slawomir Wojciech Wojtczak (vermaden) found here:
-# https://github.com/vermaden/scripts/blob/master/unbound-blacklist-fetch-huge.sh
-
-# My version is smaller and doesn't need to be ran as root
-# I am not leaking my favourite ad lists, there are plenty good ones
-
-
-# SETTINGS
-TYPE=always_nxdomain
-TEMP="/home/lowpriv_user/unbound_temp"
-ECHO=1
-FILE="/home/lowpriv_user/blacklist.conf"
-TEMP_FILE="/lowpriv_user/temp_blacklist.conf"
-
-# Create temp directory
-[ "${ECHO}" != "0" ] && echo "mkdir: create '${TEMP}' temp dir"
-mkdir -p ${TEMP}
-
-# FETCH add lists you can add multiple you like or use pihole or adguard, but why not make some pre filtering on a low priv user
-
-[ "${ECHO}" != "0" ] && echo "fetch: ${TEMP}/lists-domains"
-curl -s 'https://your-1st-list.txt' \
-     'https://your-snd-list.txt' \
-     'https://your-trd-list.txt' \
-     'https://your-fourth-list.txt' \
-     'https://your-fifth-list.txt/ ' \
-     > "${TEMP}/lists-domains"
-
-
-# GENERATE CONFIG
-[ "${ECHO}" != "0" ] && echo "echo: add '${FILE}' header"
-echo 'server:' > ${FILE}
-
-[ "${ECHO}" != "0" ] && echo "echo: add '${FILE}' rules"
-cat "${TEMP}/lists-domains" \
-  | grep -v '^(.)*#' -E \
-  | grep -v '^#' \
-  | grep -v '^$' \
-  | grep -v '^!' \
-  | awk '{print $1}' \
-  | sed -e s/$'\r'//g \
-        -e 's/^\|\|//' \
-        -e 's/\^$//' \
-        -e 's/^\|//' \
-        -e '/^\/.*\/$/d' \
-        -e '/https?:\/\//d' \
-        -e 's|\.$||g' \
-        -e 's|^\.||g' \
-  | grep -v -e '127.0.0.1' \
-            -e '0.0.0.0' \
-            -e '255.255.255.255' \
-            -e '::' \
-            -e 'localhost' \
-            -e 'localhost.localdomain' \
-            -e 'ip6-localhost' \
-            -e 'ip6-loopback' \
-            -e 'ip6-localnet' \
-            -e 'ip6-mcastprefix' \
-            -e 'ip6-allnodes' \
-            -e 'ip6-allrouters' \
-            -e 'broadcasthost' \
-            -e 'ff02::' \
-  | tr '[:upper:]' '[:lower:]' \
-  | tr -d '\r' \
-  | tr -d '#' \
-  | sort -u \
-  | sed 1,2d \
-  | while read I; do
-      echo "local-zone: \"${I}\" ${TYPE}"
-    done > ${TEMP_FILE} 2>"${TEMP}/debug-errors.txt"
-
-# Remove duplicate entries and ensure file starts with 'server:'
-echo 'server:' > ${FILE}
-sort ${TEMP_FILE} | uniq >> ${FILE}
-rm -f ${TEMP_FILE}
-
-# REMINDER FOR MANUAL ACTION
-[ "${ECHO}" != "0" ] && echo "Reminder: Manually check the unbound configuration with 'unbound-checkconf ${FILE}' and, if valid, restart the unbound service with appropriate permissions."
-
-# CLEAN
-[ "${ECHO}" != "0" ] && echo "rm: remove '${TEMP}' temp dir BUT keep debug files"
-rm -rf ${TEMP}/lists-domains
-
-# UNSET
-unset FILE
-unset TYPE
-unset TEMP
-unset ECHO
-unset UNAME
 ```
-- This should be now ran as the lowpriv_user in a crontab for getting the blocklists:
+
+**Make executable:**
+```bash
+chmod +x ~/.local/share/applications/brave-hardened.desktop
 ```
-0 0 * * * /home/lowpriv_user/blocklister.sh
+
+#### J.3. Proxy Chain Architecture
+
+The browser configuration implements a two-hop proxy chain:
+
+1. **First Hop (P1):** `10.1.0.1:3128` - Entry proxy server
+2. **Second Hop (P2):** `10.0.0.33:3128` - Exit proxy server
+
 ```
-Much love if you read until here
+
+ 
+```
+
+#### J.6. Integration with Infrastructure
+
+
+
+**Traffic Flow:**
+```
+Browser → Squid Proxy (10.1.0.1:3128) → Squid Proxy (10.0.0.33:3128) → WireGuard VPN → Internet
+```
+
+#### J.7. Testing and Verification
+
+**Test proxy functionality:**
+```bash
+# Check IP address through proxy chain
+curl --proxy http://10.1.0.1:3128 https://ipinfo.io/ip
+
+
+```
+
+**Fingerprinting tests:**
+- https://browserleaks.com/ - Comprehensive fingerprinting test
+- https://coveryourtracks.eff.org/ - EFF's privacy test
+- https://amiunique.org/ - Browser uniqueness test
+
+#### J.8. Troubleshooting
+
+```
+
+
+This section provides comprehensive debugging commands for monitoring and troubleshooting the OpenOCD security infrastructure.
+
+#### K.1. Firewall (PF) Debugging
+
+**PF Table Management:**
+```bash
+# Show dynamic hosts table contents
+pfctl -t dynamic_hosts -T show
+
+# Show ASN table contents  
+pfctl -t asn -T show
+
+# Show Cloudflare IPs table
+pfctl -t cloudflare_ips -T show
+
+# Test PF configuration syntax
+pfctl -nf /etc/pf.conf
+
+# Reload PF rules
+pfctl -f /etc/pf.conf
+
+# Show PF status and statistics
+pfctl -s info
+pfctl -s states
+pfctl -s rules
+
+# Show blocked traffic
+pfctl -s states | grep CLOSED
+
+# Monitor PF logs (if pflog enabled)
+tcpdump -n -e -ttt -i pflog0
+
+# Monitor specific traffic patterns
+tcpdump -n -e -ttt -i pflog0 host <IP_ADDRESS>
+tcpdump -n -e -ttt -i pflog0 port 51820  # For WireGuard
+
+
+# Monitor interface traffic directly
+tcpdump -ni vio0 port 443 or port 8080
+
+# Show active PF states with verbose output
+pfctl -ss
+
+# Show rules with verbose statistics
+pfctl -v -sr
+```
+
+#### K.2. Dynamic IP Management Debugging
+
+**Script Monitoring:**
+```bash
+# Monitor firewall update logs
+tail -f /usr/local/firewall_update.log
+
+# Monitor ASN update logs  
+tail -f /usr/local/asn_update.log
+
+# Monitor system messages for phone-ip-check
+tail -f /var/log/messages | grep "phone-ip-check"
+
+# Monitor system messages for pf-updater
+tail -f /var/log/messages | grep "pf-updater"
+
+# Check current dynamic IPs
+cat /usr/local/gotten-para
+
+# Check current ASN list
+cat /usr/local/asn_list.txt
+
+# Test DNS resolution manually
+dig +short example1.myhoster.com
+dig +short example2.yourhoster.com
+
+# Test with specific DNS server
+dig @127.0.0.1 +short example.com
+dig @10.0.0.1 +short example.com
+```
+
+#### K.3. WireGuard VPN Debugging
+
+**Interface Status:**
+```bash
+# Check WireGuard interface status
+ifconfig wg0
+
+# Show WireGuard configuration
+wg showconf wg0
+
+# Show WireGuard 
+wg show
+
+
+# Check if using kernel implementation
+ifconfig wg0 | grep "groups: wg"
+
+# Monitor WireGuard traffic
+wg show wg0 transfer
+
+# Check WireGuard in kernel messages
+dmesg | grep -i wireguard
+
+# Monitor WireGuard process (if userspace)
+top -d1 | grep wg
+
+# Multiple WireGuard interface management
+sh /etc/netstart wg0
+
+```
+
+**Network Routing:**
+```bash
+# Check routing table for VPN network
+route -n show -inet | grep 10.0.0
+
+# Check interface routing
+route -n show -inet -interface wg0
+
+
+# Test DNS through VPN
+dig @10.0.0.1 example.com
+```
+
+#### K.4. DNS Service Debugging
+
+**Unbound DNS:**
+```bash
+# Check Unbound status
+rcctl status unbound
+
+# Check Unbound configuration
+unbound-checkconf
+
+# Monitor Unbound logs
+tail -f /var/log/daemon | grep unbound
+
+# Check DNS cache statistics
+unbound-control stats_noreset
+```
+
+**AdGuard Home (if using containerized setup):**
+```bash
+# Check container status
+podman ps -a --filter name=adguard-home
+
+# View container logs
+podman logs adguard-home
+
+# Monitor container resource usage
+podman stats --no-stream adguard-home
+
+# Test encrypted DNS with AdGuard
+dig @10.0.0.33 -p 853 +tls example.com
+dig @10.0.0.33 -p 443 +https example.com
+
+# Check AdGuard web interface
+curl -k https://10.0.0.33:3000/
+```
+
+#### K.5. Proxy Service Debugging
+
+**Squid Proxy:**
+```bash
+# Check Squid status
+rcctl status squid
+
+# Test Squid configuration
+squid -k parse
+
+# Monitor Squid access logs
+tail -f /var/squid/logs/access.log
+
+# Monitor Squid cache logs
+tail -f /var/squid/logs/cache.log
+
+# Test proxy functionality
+curl --proxy http://10.0.0.1:3128 https://ipinfo.io/ip
+curl --proxy http://10.0.0.33:3128 https://ipinfo.io/ip
+
+# Check proxy chain
+curl --proxy http://10.1.0.1:3128 https://ipinfo.io/ip
+```
+
+#### K.6. System Service Debugging
+
+**Service Status:**
+```bash
+# Check all enabled services
+rcctl ls on
+
+# Check specific service status
+rcctl status unbound
+rcctl status squid
+
+# Check service logs
+tail -f /var/log/daemon
+tail -f /var/log/messages
+
+# Monitor system resources
+top -d1
+vmstat 1
+iostat 1
+
+# Check network connections
+netstat -an | grep LISTEN
+netstat -rn
+```
+
+#### K.7. Network Connectivity Testing
+
+**Basic Connectivity:**
+```bash
+
+
+# Test DNS resolution
+nslookup example.com
+host example.com
+
+# Test specific ports
+nc -zv example.com 443
+
+# Monitor network traffic
+tcpdump -i vio0 host example.com
+tcpdump -i wg0
+```
+
+**Advanced Network Testing:**
+```bash
+# Test MTU discovery
+ping -D -s 1472 example.com
+
+# Trace network path
+traceroute example.com
+
+# Monitor interface statistics
+netstat -i
+systat ifstat
+
+# Check ARP table
+arp -a
+
+# Monitor bandwidth usage
+systat netstat
+```
+
+
+```
+
+**Application Logs:**
+```bash
+# Firewall update logs
+/usr/local/firewall_update.log
+
+# ASN update logs
+/usr/local/asn_update.log
+
+# Squid logs
+/var/squid/logs/access.log
+/var/squid/logs/cache.log
+
+# AdGuard logs (if containerized)
+/path/to/adguard-home/logs/
+```
+
+#### K.9. Performance Monitoring
+
+**System Performance:**
+```bash
+# CPU and memory usage
+top -d1
+
+# Disk I/O
+iostat -w 1
+
+# Network statistics
+systat netstat
+
+# Process monitoring
+ps aux | grep -E "(squid|unbound|wg)"
+
+# Memory usage details
+vmstat -m
+```
+
+**Security Monitoring:**
+```bash
+# Failed login attempts
+grep "Failed" /var/log/authlog
+
+# Sudo usage
+grep "sudo" /var/log/secure
+
+# PF blocked connections
+pfctl -s states | grep CLOSED
+
+# Monitor for suspicious activity
+tail -f /var/log/authlog | grep -E "(Failed|Invalid)"
+```
+
+This debugging section provides comprehensive tools for monitoring, troubleshooting, and maintaining your OpenOCD security infrastructure.
+
+#### K.10. System Administration Commands
+
+**System Shutdown and Reboot:**
+```bash
+# Shutdowns
+/sbin/halt -p 
+
+shutdown -r now 
+```
