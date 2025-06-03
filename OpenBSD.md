@@ -1555,23 +1555,9 @@ request_header_replace   Sec-Fetch-Site "same-site"
 #request_header_replace   Sec-Fetch-Site  "cross-site"    mode_offensive
 #request_header_replace   Accept-Encoding "gzip, deflate, br"
 ##################################################################
+```
 
 ### J. Browser Configuration
-#### J.1. Brave Hardened Wrapper
-
-This section provides a hardened Brave browser configuration that integrates with the proxy chain infrastructure. The wrapper implements two-hop proxy rotation, aggressive fingerprinting resistance, and comprehensive privacy features.
-
-**Features:**
-- Two-hop proxy rotation for enhanced anonymity
-- Chrome/125 User-Agent spoofing (Windows 10)
-- QUIC protocol disabled for consistency
-- Full header normalization and clamping
-- Site isolation with V8 security cage
-- JIT compilation disabled
-- Letterboxing for viewport fingerprinting resistance
-- Comprehensive feature blocking (WebRTC, WebGL, etc.)
-
-#### J.2. Installation and Setup
 
 **Create the desktop launcher:**
 - Save as `~/.local/share/applications/brave-hardened.desktop`:
@@ -2404,5 +2390,4 @@ pfctl -s states | grep CLOSED
 /sbin/halt -p 
 
 shutdown -r now 
-
 ```
