@@ -1869,21 +1869,20 @@ exit 0
 
 ```
 
-# totally different alternative1: when in doubt SSH-VPN
+# alternative1: when in doubt SSH-VPN
 
 ```
 shuttle --dns -NHr root@myserver-ip.ip:443 0/0 #
 sshuttle --dns -NHr username@myserver-ip.ipinfo:443 10.0.0.0/24 #
 ```
 
-# totally different alternative2:  SSH -D
+# alternative2:  SSH -D
 ```
 ssh -D 3128 my-server
 ```
 
-#Useful debugging commands
+# beginner friendly debugging commands you might need
 
-**PF Table Management:**
 ```bash
 # Show dynamic hosts table contents
 pfctl -t dynamic_hosts -T show
@@ -1926,7 +1925,6 @@ pfctl -v -sr
 ```
 
 
-**Step 3: Debugging cmds for wg**
 ```bash
 # Start WireGuard interface
 sh /etc/netstart wg0
@@ -1945,8 +1943,6 @@ wg show wg0
 wg showconf wg0
 ```
 
-
-**Script Monitoring:**
 ```bash
 
 # Monitor firewall update logs
@@ -1969,9 +1965,6 @@ cat /usr/local/asn_list.txt
 
 ```
 
-#### K.3. WireGuard VPN Debugging
-
-**Interface Status:**
 ```bash
 # Check WireGuard interface status
 ifconfig wg0
@@ -1981,7 +1974,6 @@ wg showconf wg0
 
 # Show WireGuard 
 wg show
-
 
 # Check if using kernel implementation
 ifconfig wg0 | grep "groups: wg"
@@ -2010,8 +2002,6 @@ dig @10.0.0.1 +tls example.com
 dig @10.0.0.1 +https example.com
 ```
 
-
-**Unbound DNS:**
 ```bash
 # Check Unbound status
 rcctl status unbound
@@ -2035,7 +2025,6 @@ podman logs adguard-home
 
 ```
 
-**Squid :**
 ```bash
 # Check Squid status
 rcctl status squid
