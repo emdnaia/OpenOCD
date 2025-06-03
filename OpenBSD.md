@@ -1580,9 +1580,7 @@ This section provides a hardened Brave browser configuration that integrates wit
 #!/bin/sh
 ############################################################################
 # Brave hardened wrapper · v1.8 (20 May 2025)
-# • Two-hop proxy rotation (10.1.0.1 → 10.0.0.33)
-# • Chrome/125 UA (Win10), QUIC-off, full header clamp
-# • Site-Isolation + V8 cage + no-JIT + letter-boxing
+
 ############################################################################
 
 # --------- Adjust this to the exit country of your proxy chain ----------
@@ -1590,7 +1588,7 @@ export TZ=America/New_York
 
 # --------- Proxy chain ---------------------------------------------------
 P1="10.1.0.1:3128"
-P2="10.0.0.33:3128"
+P2="10.0.0.2:3128"
 export http_proxy="http://$P1"
 export https_proxy="$http_proxy"
 export ALL_PROXY="$http_proxy"
@@ -1629,17 +1627,28 @@ BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo,WebBluetooth,WebUSB,WebHID,WebS
 chmod +x ~/.local/share/applications/brave-hardened.desktop
 ```
 
-#### J.3. Proxy Chain Architecture
+# Chose Nginx or HAProxy
+- choose one or the other: HAProxy cannot proxy UDP in freemium as far as I know? via nginx you can (hysteria2)
 
-The browser configuration implements a two-hop proxy chain:
+- Installation and management:
 
-1. **First Hop (P1):** `10.1.0.1:3128` - Entry proxy server
-2. **Second Hop (P2):** `10.0.0.33:3128` - Exit proxy server
+```
+# Install HAProxy
+pkg_add nginx nginx-stream
 
+# Enable and start HAProxy
+rcctl enable nginx
+rcctl start nginx
 
+# Check status
+rcctl check nginx
+
+# Reload configuration
+rcctl reload nginx
+```
 
 #### I.1. Nginx Stream Configuration
-- Save as `/etc/nginx/nginx.conf`
+- Option1: Save as `/etc/nginx/nginx.conf`
 
 ```
 worker_processes auto;
@@ -1671,7 +1680,6 @@ stream {
 
 #### I.1.1. HAProxy Configuration (Alternative for TCP-based protocols)
 
-- Installation and management:
 
 ```
 # Install HAProxy
@@ -1688,7 +1696,7 @@ rcctl check haproxy
 rcctl reload haproxy
 ```
 
-- Save as `/etc/haproxy/haproxy.cfg`
+- Option2: Save as `/etc/haproxy/haproxy.cfg`
 
 ```
 global
@@ -2153,10 +2161,12 @@ exit 0
 ```
 
 # totally different alternative1: when in doubt SSH-VPN
+
 ```
 shuttle --dns -NHr root@myserver-ip.ip:443 0/0 #
 sshuttle --dns -NHr username@myserver-ip.ipinfo:443 10.0.0.0/24 #
 ```
+
 # totally different alternative2:  SSH -D
 ```
 ssh -D 3128 my-server
