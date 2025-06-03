@@ -688,9 +688,95 @@ PersistentKeepalive = 25
 ```
 
 ### F. DNS Configuration
+#### F.0: (builtin) unbound 
 
-#### F.0 fastest way via podman / docker for an adguard home
+- configure on `/var/unbound/etc/unbound.conf`
 
+```
+# $OpenBSD: unbound.conf,v 1.21 2020/10/28 11:35:58 sthen Exp $
+
+server:
+  # Logging
+  # logfile: "/var/log/unbound.log"
+  # verbosity: 2
+  # log-queries: yes
+
+  # Listen interfaces
+  interface: 127.0.0.1@53
+  interface: 10.0.0.1@53
+  interface: 127.0.0.1@853
+  interface: 10.0.0.1@853
+  # interface: 0.0.0.0@53
+  # interface: ::1
+  do-ip4: yes
+  do-ip6: no
+  do-udp: yes
+  do-tcp: yes
+ 
+ # Access control
+  access-control: 127.0.0.1 allow
+  access-control: 10.0.0.0/24 allow
+  access-control: ::0/0 refuse
+
+
+  # Security settings
+  hide-identity: yes
+  hide-version: yes
+
+  # Use DNSSEC
+  auto-trust-anchor-file: "/var/unbound/db/root.key"
+  harden-glue: yes
+  harden-dnssec-stripped: yes
+  harden-short-bufsize: yes
+  aggressive-nsec: yes
+
+  # TLS configuration
+  tls-cert-bundle: "/etc/ssl/cert.pem"
+  tls-port: 853
+  tls-service-key: "/var/unbound/etc/unbound_server.key"
+  tls-service-pem: "/var/unbound/etc/unbound_server.pem"
+
+  # Performance tuning
+#  num-threads: 3
+#  so-reuseport: no
+#  num-queries-per-thread: 2048
+#  outgoing-range: 4096
+#  msg-cache-size: 256m
+#  rrset-cache-size: 256m
+#  msg-cache-slabs: 4
+#  rrset-cache-slabs: 4
+#  infra-cache-slabs: 4
+#  key-cache-slabs: 4
+  cache-min-ttl: 300
+  cache-max-ttl: 86400
+  prefetch: yes
+  prefetch-key: yes
+#  val-permissive-mode: yes
+  serve-expired: yes
+  serve-expired-ttl: 86400
+#  so-rcvbuf: 0
+#  so-sndbuf: 0
+#  edns-buffer-size: 1472
+#  stream-wait-size: 16m
+  qname-minimisation: yes
+#  rrset-roundrobin: yes
+  fast-server-permil: 700
+  fast-server-num: 4
+
+forward-zone:
+  name: "."
+  forward-first: yes
+  forward-tls-upstream: yes
+ # you could forward to the gree-podman-version-below-like-that
+ # forward-addr: 10.0.0.55
+  forward-addr: 9.9.9.9@853#dns.quad9.net
+  forward-addr: 1.1.1.1@853#cloudflare-dns.com
+  forward-addr: 8.8.8.8@853#dns.google
+
+```
+
+#### F.1: greed DNS on another Linux box
+- use adguard via docker or podman
 ``` 
 #!/bin/bash
 
