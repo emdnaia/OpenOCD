@@ -57,12 +57,17 @@ openbsd_firewall_ip="10.10.10.13"   # IP of your OpenBSD PF firewall VM
 backend_server_ip="10.10.10.20"     # IP of backend server (if direct forwarding)
 
 ## HTTPS Traffic Forwarding (Port 443)
-# Forward incoming HTTPS traffic to OpenBSD firewall for processing
+#  trojan needs tcp
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
+
+## HTTPS Traffic Forwarding (Port 443)
+# hysteria needs udp
 post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
 post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
 
 ## HTTP Traffic Forwarding (Port 80)
-# Forward incoming HTTP traffic to OpenBSD firewall for processing
+# 
 post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
 post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
 
