@@ -1925,196 +1925,9 @@ backend sing
 }
 ```
 # singbox runner
+runner script to be added to a cornjob to do an unpriv singbox binary via 8080 -> (nginx/haproxy) 443
 
-- runner2.sh
-
-```
-#!/bin/sh
-
-# Define the port to check
-PORT="8080"
-
-# Define the path to the sing-box binary and its name
-BINARY_PATH="/home/myuser/sing-box"
-BINARY_NAME="sing-box"
-BINARY="${BINARY_PATH}/${BINARY_NAME}"
-
-# Define the configuration file
-CONFIG="/home/myuser/sing-box/config.json"
-
-# Path to the directory containing the sing-box source code
-SOURCE_DIR="/home/myuser/sing-box"
-
-# Define how often to rebuild the binary (in days)
-REBUILD_INTERVAL_DAYS="14"
-
-# Define the temporary file to store the last build time (inside the source directory)
-LAST_BUILD_TIME_FILE="${SOURCE_DIR}/.last_build_time"
-
-# Lock file to prevent concurrent executions
-LOCK_FILE="${SOURCE_DIR}/.singbox_cron_lock"
-
-# Timeout for acquiring the lock (in seconds)
-LOCK_TIMEOUT="60"
-
-# Retry interval for port check (in seconds)
-PORT_RETRY_INTERVAL="0.5"  # Significantly reduced retry interval
-PORT_RETRY_COUNT="10"   # Increased retry count for more reliability
-
-# Log file for sing-box output
-LOG_FILE="${SOURCE_DIR}/sing-box.log"
-
-# Function to rebuild the sing-box binary
-rebuild_binary() {
-  echo "Rebuilding sing-box binary..."
-  cd "${SOURCE_DIR}" || { echo "Error: Could not change directory to ${SOURCE_DIR}"; exit 1; }
-
-  # Sanitize environment variables before running go commands
-  export GOCACHE="$(pwd)/.cache/go-build"
-  export GOMODCACHE="$(pwd)/.cache/go-mod"
-
-  go clean -cache
-  go clean -modcache
-  go mod tidy
-  GOOS=openbsd GOARCH=amd64 go build -a -trimpath -ldflags="-buildid=" -tags "with_quic with_utls with_reality_server" -o "${BINARY_NAME}" ./cmd/sing-box || { echo "Error: Go build failed"; exit 1; }
-  # Move the newly built binary to the specified path
-  mv "${SOURCE_DIR}/${BINARY_NAME}" "${BINARY_PATH}" || { echo "Error: Failed to move binary"; exit 1; }
-  echo "Sing-box binary rebuilt and moved to ${BINARY}."
-
-  # Update the last build time in the temporary file
-  date +%s > "${LAST_BUILD_TIME_FILE}" || { echo "Error: Failed to update last build time"; exit 1; }
-  unset GOCACHE
-  unset GOMODCACHE
-}
-
-# Function to acquire the lock
-acquire_lock() {
-  start_time=$(date +%s)
-  while [ -f "${LOCK_FILE}" ]; do
-    PID=$(cat "${LOCK_FILE}")
-    if ps -p "$PID" > /dev/null 2>&1; then
-      echo "Another instance is already running (PID: $PID). Waiting..."
-    else
-      echo "Stale lock file found. Removing it."
-      rm -f "${LOCK_FILE}"
-      break
-    fi
-
-    current_time=$(date +%s)
-    elapsed_time=$((current_time - start_time))
-    if [ "$elapsed_time" -gt "${LOCK_TIMEOUT}" ]; then
-      echo "Timeout waiting for lock. Exiting."
-      exit 1
-    fi
-    sleep 5 # Wait before checking again
-  done
-
-  # Create a lock file
-  echo "$$" > "${LOCK_FILE}" || { echo "Error: Failed to create lock file"; exit 1; }
-}
-
-# Function to release the lock
-release_lock() {
-  rm -f "${LOCK_FILE}"
-}
-
-# Trap signals to release the lock file on exit
-trap "release_lock; exit" SIGHUP SIGINT SIGTERM
-
-# Acquire the lock
-acquire_lock
-
-# Check if the last build time file exists
-if [ ! -f "${LAST_BUILD_TIME_FILE}" ]; then
-  echo "Last build time file not found. Creating it..."
-  # If the file doesn't exist, create it and record the current time
-  date +%s > "${LAST_BUILD_TIME_FILE}" || { echo "Error: Failed to create last build time file"; release_lock; exit 1; }
-  chmod 600 "${LAST_BUILD_TIME_FILE}" # Limit permissions to owner only
-fi
-
-# Get the last build time from the file
-LAST_BUILD_TIME=$(cat "${LAST_BUILD_TIME_FILE}")
-
-# Check if LAST_BUILD_TIME is empty and set to 0 if it is
-if [ -z "$LAST_BUILD_TIME" ]; then
-  echo "LAST_BUILD_TIME is empty. Setting to 0."
-  LAST_BUILD_TIME=0
-fi
-
-# Get the current time
-CURRENT_TIME=$(date +%s)
-
-# Calculate the rebuild interval in seconds
-REBUILD_INTERVAL_SECONDS=$((REBUILD_INTERVAL_DAYS * 24 * 60 * 60))
-
-# Calculate the time difference since the last build
-TIME_DIFF=$((CURRENT_TIME - LAST_BUILD_TIME))
-
-# Check if the rebuild interval has passed
-if [ "$TIME_DIFF" -gt "${REBUILD_INTERVAL_SECONDS}" ]; then
-  echo "Rebuild interval has passed. Rebuilding binary..."
-  rebuild_binary
-  # Pause for 3 minutes (180 seconds)
-  echo "Pausing for 3 minutes..."
-  sleep 180
-else
-  echo "Rebuild interval has not passed. Skipping binary rebuild."
-fi
-
-# Function to check if sing-box is running and listening on the port
-is_singbox_running() {
-  echo "--- Running checks ---"
-
-  # Check if the sing-box process is running
-  PS_OUTPUT=$(ps aux | grep "${BINARY_NAME}" | grep -v grep)
-  echo "  ps aux output: $PS_OUTPUT"
-
-  # Check if something is listening on the port
-  NETSTAT_OUTPUT=$(netstat -an | grep "\.${PORT}" | grep LISTEN)
-  echo "  netstat -an output: $NETSTAT_OUTPUT"
-
-  # Get fstat output
-  FSTAT_OUTPUT=$(fstat -n | grep "\.${PORT}")
-  echo "  fstat output: $FSTAT_OUTPUT"
-
-  if [ -n "$PS_OUTPUT" ]; then
-    if [ -n "$NETSTAT_OUTPUT" ]; then
-      return 0  # sing-box is running and listening
-    else
-      echo "  sing-box process is running, but nothing is listening on port ${PORT}."
-      return 1 # sing-box process but port not listening
-    fi
-  else
-    return 1  # sing-box process is not running
-  fi
-}
-
-# Check if sing-box is listening on the port and retry
-for i in $(seq 1 "${PORT_RETRY_COUNT}"); do
-  if is_singbox_running; then
-    echo "sing-box is already running and listening on port ${PORT} (attempt $i/$PORT_RETRY_COUNT)."
-    release_lock
-    exit 0  # Exit successfully - sing-box is running
-  else
-    echo "sing-box is not running or listening on port ${PORT} (attempt $i/$PORT_RETRY_COUNT). Waiting..."
-    sleep "${PORT_RETRY_INTERVAL}"
-  fi
-done
-
-echo "sing-box is not running after ${PORT_RETRY_COUNT} attempts. Starting it."
-
-# Run the sing-box binary, properly detached
-(
-  cd "${BINARY_PATH}" || exit 1
-  ./"${BINARY_NAME}" run -c "${CONFIG}" > "${LOG_FILE}" 2>&1 &
-)
-echo "Starting sing-box detached (logging to ${LOG_FILE})."
-
-# Release the lock
-release_lock
-
-exit 0
-```
+- `./runv6.sh`
 
 ```
 #!/bin/sh
@@ -2336,14 +2149,15 @@ echo "Starting sing-box detached (logging to ${LOG_FILE})."
 release_lock
 
 exit 0
+
 ```
 
-# when in doubt SSH-VPN
+# totally different alternative1: when in doubt SSH-VPN
 ```
 shuttle --dns -NHr root@myserver-ip.ip:443 0/0 #
 sshuttle --dns -NHr username@myserver-ip.ipinfo:443 10.0.0.0/24 #
 ```
-# or  SSH -D
+# totally different alternative2:  SSH -D
 ```
 ssh -D 3128 my-server
 ```
