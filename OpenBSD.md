@@ -1,74 +1,6 @@
 # OpenOCD - Operational Defense & Concealment Infrastructure
 
-**A production-ready, multi-layered security infrastructure for red team operations, privacy research, and enterprise defense. Built on OpenBSD with comprehensive traffic obfuscation, encrypted communications, and advanced evasion capabilities.**
-### **Chinese Privacy Projects Integration**
-1. **Sing-box**: Advanced proxy platform with protocol obfuscation capabilities
-2. **Trojan-GFW**: TLS-based proxy protocol for censorship circumvention
-3. **Hysteria2**: UDP-based proxy with advanced congestion control and obfuscation
 
-### **Core Infrastructure**
-- **OpenBSD 7.6+**: Base operating system with kernel-level security
-- **Proxmox VE**: Virtualization platform for infrastructure deployment
-- **WireGuard**: Modern VPN protocol with kernel implementation
-- **Unbound**: Validating DNS resolver with encryption support
-
-### **Proxy & Obfuscation**
-- **Squid 6.10**: HTTP/HTTPS proxy with advanced privacy features
-
-### **Containerization & Services**
-- **Podman**: Rootless container runtime for service isolation
-- **AdGuard Home**: DNS filtering and ad-blocking platform
-- **Self-Signed PKI**: Internal certificate authority for encrypted services
-
-### **Security Tools**
-- **PF (Packet Filter)**: OpenBSD's advanced firewall system
-- **DNScrypt**: DNS encryption and validation
-- **OpenSSL**: Cryptographic operations and certificate management
-
-
-This infrastructure provides enterprise-grade security with advanced privacy features, making it suitable for high-stakes operations where attribution avoidance and traffic obfuscation are critical requirements.
-
-### A. Initial Setup and Configuration
-#### A.1. System Architecture Overview
-
-1. **Initial Setup:** Configure the OpenBSD gateway with PF (Packet Filter) rules to establish the base security perimeter.
-2. **Dynamic IP Management:** Implement automated IP whitelisting for VPN access using dynamic DNS resolution.
-3. **Automation Framework:** Deploy cron jobs for system maintenance and security updates.
-4. **DNS Security:** Configure encrypted DNS resolution using either DoT or ODoH protocols.
-5. **Content Filtering:** Implement ad blocking with dynamic list management and low-privilege execution.
-
-#### A.2. Component Architecture
-
-- **Dynamic IP Update Script (`getpara.sh`)**: A robust script that resolves FQDNs to IPs and updates PF tables dynamically. Implements retry logic, DNS fallback, and atomic updates.
-  
-- **PF Configuration (`pf.conf`)**: A comprehensive firewall configuration implementing:
-  - Default deny policies
-  - SSH access control
-  - WireGuard traffic management
-  - State tracking
-  - NAT rules
-
-- **Cron Jobs**: Automated system maintenance tasks including:
-  - System updates
-  - VPN renewals
-  - Dynamic IP updates
-  - DNS cache management
-  - ASN monitoring
-
-- **DNS Infrastructure**: Configurable DNS encryption using either:
-  - ODoH (Oblivious DNS over HTTPS) via Cloudflare
-  - DoT (DNS over TLS) via Quad9
-  - Local caching and filtering
-
-- **Ad Blocking System**: A low-privilege solution that:
-  - Fetches and processes ad lists
-  - Implements local DNS blocking
-  - Updates dynamically via cron
-  - Runs with minimal system privileges
-
-#### A.3. System Hardening Configuration
-
-Before implementing the automation framework, configure essential system hardening settings for OpenBSD.
 
 #### A.3.1. Kernel Security Settings
 - Configure system security parameters in `/etc/sysctl.conf`:
@@ -1307,24 +1239,6 @@ inet 10.0.0.1 255.255.255.0 NONE
 up
 ```
 
-**Step 3: Interface management commands**
-```bash
-# Start WireGuard interface
-sh /etc/netstart wg0
-
-# Stop WireGuard interface  
-ifconfig wg0 destroy
-
-# Restart WireGuard interface
-ifconfig wg0 destroy && sh /etc/netstart wg0
-
-# Check interface status
-ifconfig wg0
-wg show wg0
-
-# View WireGuard configuration
-wg showconf wg0
-```
 
 #### E.3. Client Configuration
 
@@ -1355,65 +1269,6 @@ AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = YOUR_SERVER_PUBLIC_IP:51820
 PersistentKeepalive = 25
 ```
-
-#### E.4. Kernel Mode Migration
-
-**Migrating from userspace to kernel mode:**
-```bash
-# Stop userspace WireGuard (if running)
-wg-quick down wg0
-
-# Remove old interface (if exists)
-ifconfig wg0 destroy 2>/dev/null || true
-
-# Create kernel mode interface
-sh /etc/netstart wg0
-
-# Verify kernel mode is active
-ifconfig wg0 | grep "groups: wg"
-```
-
-#### E.5. Troubleshooting
-
-**Common commands for debugging:**
-```bash
-# Check if WireGuard module is loaded
-dmesg | grep -i wireguard
-
-# View interface details
-ifconfig wg0
-
-# Check WireGuard peer status
-wg show
-
-# Monitor traffic
-wg show wg0 transfer
-
-# Check routing
-route -n show -inet | grep 10.0.0
-
-# Test connectivity from client
-ping 10.0.0.1
-```
-
-**Performance verification:**
-```bash
-# Check if using kernel implementation
-ifconfig wg0 | grep "groups: wg"
-
-# Monitor CPU usage during transfer
-top -d1 | grep wg
-```
-
-#### E.6. Security Notes
-
-- **Key Management:** Store private keys with `600` permissions
-- **Firewall Integration:** Ensure PF rules allow WireGuard traffic (port 51820/UDP)
-- **Network Isolation:** Use dedicated subnet (10.0.0.0/24) for VPN clients
-- **Regular Key Rotation:** Consider rotating keys periodically for enhanced security
-- **Monitoring:** Monitor connection logs and unusual traffic patterns
-
-**Congratulations!** You now have a kernel-mode WireGuard VPN that only allows connections from whitelisted FQDNs, with all traffic secured within the VPN tunnel. The next steps are to add encrypted DNS and ad blocking for complete security coverage.
 
 ### F. DNS Configuration
 
@@ -2095,39 +1950,711 @@ The browser configuration implements a two-hop proxy chain:
 
 ```
 
+#### I.1. Nginx Stream Configuration
+- Save as `/etc/nginx/nginx.conf`
+```
+worker_processes auto;
+load_module modules/ngx_stream_module.so;
+
+events {
+    worker_connections 4096;
+}
+#trojan tcp - enabled
+stream {
+    upstream singbox_backend {
+        server 127.0.0.1:8080; # Sing-box server listening on localhost:8080
+    }
+
+    # For TCP-based protocols (Trojan)
+    server {
+        listen 443; # TCP only
+        proxy_pass singbox_backend;
+    }
+#hysteria udp - disabled
+#    # For UDP-based protocols (Hysteria2)
+#    server {
+#       listen 443 udp; # UDP support required
+#        proxy_pass singbox_backend;
+#    }
+}
+```
+
+#### I.1.1. HAProxy Configuration (Alternative for TCP-based protocols)
+
+- Installation and management:
+```
+# Install HAProxy
+pkg_add haproxy
+
+# Enable and start HAProxy
+rcctl enable haproxy
+rcctl start haproxy
+
+# Check status
+rcctl check haproxy
+
+# Reload configuration
+rcctl reload haproxy
+```
+
+- Save as `/etc/haproxy/haproxy.cfg`
+```
+global
+    log 127.0.0.1 local0 debug
+    maxconn 1024
+    chroot /var/haproxy
+    uid 604
+    gid 604
+    daemon
+    pidfile /var/run/haproxy.pid
+
+defaults
+    log global
+    mode tcp  # Keep TCP mode for SSL passthrough
+    option tcplog  # Log at the TCP level
+    option dontlognull
+    option redispatch
+    retries 3
+    maxconn 2000
+    timeout connect 10s
+    timeout client 300s
+    timeout server 300s
+
+frontend trojan_frontend
+    bind *:443
+    tcp-request inspect-delay 5s
+    default_backend sing
+
+backend sing
+    mode tcp
+    server trojan 127.0.0.1:8080
+```
+
+
+
+#### I.2. Trojan Protocol Configuration
+##### I.2.1. Client Configuration
+- Save as `client-config.json`
+```
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "address": "tls://1.1.1.1",
+        "detour": "direct"
+      }
+    ],
+    "strategy": "prefer_ipv4"
+  },
+  "inbounds": [
+    {
+      "type": "socks",
+      "tag": "socks-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080,
+      "sniff": true,
+      "sniff_override_destination": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "trojan",
+      "tag": "proxy",
+      "server": "server.mydomain.net",
+      "server_port": 443,
+      "password": "password-long-123456-secure",
+      "transport": {
+        "type": "ws",
+        "path": "/cdn/v3",
+        "headers": {
+          "Host": "server.mydomain.net"
+        }
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "server.mydomain.net",
+        "alpn": ["h2", "http/1.1"],
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
+```
+
+##### I.2.2. Server Configuration
+- Save as `server-config.json`
+```
+{
+  "log": {
+    "level": "debug",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "trojan",
+      "tag": "trojan-in",
+      "listen": "127.0.0.1",
+      "listen_port": 8080,
+      "users": [
+        {
+          "name": "example",
+          "password": "password-long-123456-secure"
+        }
+      ],
+      "transport": {
+        "type": "ws",
+        "path": "/cdn/v3",
+        "headers": {
+          "Host": "server.mydomain.net"
+        }
+      },
+      "tls": {
+        "enabled": true,
+        "certificate_path": "fullchain666.pem",
+        "key_path": "privkey666.pem",
+        "alpn": ["h2", "http/1.1"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct"
+    }
+  ]
+}
+```
+- run via `./sing-box run -c server-config.json`
+
+
+#### I.3. Hysteria2 Protocol Configuration
+##### I.3.1. Client Configuration
+- Save as `client-config.json`
+```
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "address": "tls://1.1.1.1",
+        "detour": "direct"
+      }
+    ],
+    "strategy": "prefer_ipv4"
+  },
+  "inbounds": [
+    {
+      "type": "socks",
+      "tag": "socks-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080,
+      "sniff": true,
+      "sniff_override_destination": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "up_mbps": 100,
+      "down_mbps": 100,
+      "tag": "proxy",
+      "server": "server.mydomain.net",
+      "server_port": 443,
+      "obfs": {
+        "type": "salamander",
+        "password": "password-long-123456-secure-obfs"
+      },
+      "password": "password-long-123456-secure-hysteria",
+      "tls": {
+        "enabled": true,
+        "server_name": "server.mydomain.net",
+        "alpn": ["h3"]
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
+```
+
+##### I.3.2. Server Configuration
+- Save as `server-config.json`
+```
+{
+  "log": {
+    "level": "debug",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "hysteria2",
+      "listen": "127.0.0.1",
+      "listen_port": 8080,
+      "users": [
+        {
+          "name": "example",
+          "password": "password-long-123456-secure-hysteria"
+        }
+      ],
+      "obfs": {
+        "type": "salamander",
+        "password": "password-long-123456-secure-obfs"
+      },
+      "tls": {
+        "enabled": true,
+        "certificate_path": "fullchain666.pem",
+        "key_path": "privkey666.pem",
+        "alpn": ["h3"]
+        "min_version": "1.3",
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct"
+    }
+  ]
+}
+```
+# singbox runner
+- runner2.sh
+
+```
+#!/bin/sh
+
+# Define the port to check
+PORT="8080"
+
+# Define the path to the sing-box binary and its name
+BINARY_PATH="/home/myuser/sing-box"
+BINARY_NAME="sing-box"
+BINARY="${BINARY_PATH}/${BINARY_NAME}"
+
+# Define the configuration file
+CONFIG="/home/myuser/sing-box/config.json"
+
+# Path to the directory containing the sing-box source code
+SOURCE_DIR="/home/myuser/sing-box"
+
+# Define how often to rebuild the binary (in days)
+REBUILD_INTERVAL_DAYS="14"
+
+# Define the temporary file to store the last build time (inside the source directory)
+LAST_BUILD_TIME_FILE="${SOURCE_DIR}/.last_build_time"
+
+# Lock file to prevent concurrent executions
+LOCK_FILE="${SOURCE_DIR}/.singbox_cron_lock"
+
+# Timeout for acquiring the lock (in seconds)
+LOCK_TIMEOUT="60"
+
+# Retry interval for port check (in seconds)
+PORT_RETRY_INTERVAL="0.5"  # Significantly reduced retry interval
+PORT_RETRY_COUNT="10"   # Increased retry count for more reliability
+
+# Log file for sing-box output
+LOG_FILE="${SOURCE_DIR}/sing-box.log"
+
+# Function to rebuild the sing-box binary
+rebuild_binary() {
+  echo "Rebuilding sing-box binary..."
+  cd "${SOURCE_DIR}" || { echo "Error: Could not change directory to ${SOURCE_DIR}"; exit 1; }
+
+  # Sanitize environment variables before running go commands
+  export GOCACHE="$(pwd)/.cache/go-build"
+  export GOMODCACHE="$(pwd)/.cache/go-mod"
+
+  go clean -cache
+  go clean -modcache
+  go mod tidy
+  GOOS=openbsd GOARCH=amd64 go build -a -trimpath -ldflags="-buildid=" -tags "with_quic with_utls with_reality_server" -o "${BINARY_NAME}" ./cmd/sing-box || { echo "Error: Go build failed"; exit 1; }
+  # Move the newly built binary to the specified path
+  mv "${SOURCE_DIR}/${BINARY_NAME}" "${BINARY_PATH}" || { echo "Error: Failed to move binary"; exit 1; }
+  echo "Sing-box binary rebuilt and moved to ${BINARY}."
+
+  # Update the last build time in the temporary file
+  date +%s > "${LAST_BUILD_TIME_FILE}" || { echo "Error: Failed to update last build time"; exit 1; }
+  unset GOCACHE
+  unset GOMODCACHE
+}
+
+# Function to acquire the lock
+acquire_lock() {
+  start_time=$(date +%s)
+  while [ -f "${LOCK_FILE}" ]; do
+    PID=$(cat "${LOCK_FILE}")
+    if ps -p "$PID" > /dev/null 2>&1; then
+      echo "Another instance is already running (PID: $PID). Waiting..."
+    else
+      echo "Stale lock file found. Removing it."
+      rm -f "${LOCK_FILE}"
+      break
+    fi
+
+    current_time=$(date +%s)
+    elapsed_time=$((current_time - start_time))
+    if [ "$elapsed_time" -gt "${LOCK_TIMEOUT}" ]; then
+      echo "Timeout waiting for lock. Exiting."
+      exit 1
+    fi
+    sleep 5 # Wait before checking again
+  done
+
+  # Create a lock file
+  echo "$$" > "${LOCK_FILE}" || { echo "Error: Failed to create lock file"; exit 1; }
+}
+
+# Function to release the lock
+release_lock() {
+  rm -f "${LOCK_FILE}"
+}
+
+# Trap signals to release the lock file on exit
+trap "release_lock; exit" SIGHUP SIGINT SIGTERM
+
+# Acquire the lock
+acquire_lock
+
+# Check if the last build time file exists
+if [ ! -f "${LAST_BUILD_TIME_FILE}" ]; then
+  echo "Last build time file not found. Creating it..."
+  # If the file doesn't exist, create it and record the current time
+  date +%s > "${LAST_BUILD_TIME_FILE}" || { echo "Error: Failed to create last build time file"; release_lock; exit 1; }
+  chmod 600 "${LAST_BUILD_TIME_FILE}" # Limit permissions to owner only
+fi
+
+# Get the last build time from the file
+LAST_BUILD_TIME=$(cat "${LAST_BUILD_TIME_FILE}")
+
+# Check if LAST_BUILD_TIME is empty and set to 0 if it is
+if [ -z "$LAST_BUILD_TIME" ]; then
+  echo "LAST_BUILD_TIME is empty. Setting to 0."
+  LAST_BUILD_TIME=0
+fi
+
+# Get the current time
+CURRENT_TIME=$(date +%s)
+
+# Calculate the rebuild interval in seconds
+REBUILD_INTERVAL_SECONDS=$((REBUILD_INTERVAL_DAYS * 24 * 60 * 60))
+
+# Calculate the time difference since the last build
+TIME_DIFF=$((CURRENT_TIME - LAST_BUILD_TIME))
+
+# Check if the rebuild interval has passed
+if [ "$TIME_DIFF" -gt "${REBUILD_INTERVAL_SECONDS}" ]; then
+  echo "Rebuild interval has passed. Rebuilding binary..."
+  rebuild_binary
+  # Pause for 3 minutes (180 seconds)
+  echo "Pausing for 3 minutes..."
+  sleep 180
+else
+  echo "Rebuild interval has not passed. Skipping binary rebuild."
+fi
+
+# Function to check if sing-box is running and listening on the port
+is_singbox_running() {
+  echo "--- Running checks ---"
+
+  # Check if the sing-box process is running
+  PS_OUTPUT=$(ps aux | grep "${BINARY_NAME}" | grep -v grep)
+  echo "  ps aux output: $PS_OUTPUT"
+
+  # Check if something is listening on the port
+  NETSTAT_OUTPUT=$(netstat -an | grep "\.${PORT}" | grep LISTEN)
+  echo "  netstat -an output: $NETSTAT_OUTPUT"
+
+  # Get fstat output
+  FSTAT_OUTPUT=$(fstat -n | grep "\.${PORT}")
+  echo "  fstat output: $FSTAT_OUTPUT"
+
+  if [ -n "$PS_OUTPUT" ]; then
+    if [ -n "$NETSTAT_OUTPUT" ]; then
+      return 0  # sing-box is running and listening
+    else
+      echo "  sing-box process is running, but nothing is listening on port ${PORT}."
+      return 1 # sing-box process but port not listening
+    fi
+  else
+    return 1  # sing-box process is not running
+  fi
+}
+
+# Check if sing-box is listening on the port and retry
+for i in $(seq 1 "${PORT_RETRY_COUNT}"); do
+  if is_singbox_running; then
+    echo "sing-box is already running and listening on port ${PORT} (attempt $i/$PORT_RETRY_COUNT)."
+    release_lock
+    exit 0  # Exit successfully - sing-box is running
+  else
+    echo "sing-box is not running or listening on port ${PORT} (attempt $i/$PORT_RETRY_COUNT). Waiting..."
+    sleep "${PORT_RETRY_INTERVAL}"
+  fi
+done
+
+echo "sing-box is not running after ${PORT_RETRY_COUNT} attempts. Starting it."
+
+# Run the sing-box binary, properly detached
+(
+  cd "${BINARY_PATH}" || exit 1
+  ./"${BINARY_NAME}" run -c "${CONFIG}" > "${LOG_FILE}" 2>&1 &
+)
+echo "Starting sing-box detached (logging to ${LOG_FILE})."
+
+# Release the lock
+release_lock
+
+exit 0
+```
+
+```
+#!/bin/sh
+
+# --- Define Variables ---
+
+# Define the port to check
+PORT="8080"
+
+# Define the path to the sing-box binary and its name
+BINARY_PATH="/home/myuser/sing-box"
+BINARY_NAME="sing-box"
+BINARY="${BINARY_PATH}/${BINARY_NAME}"
+
+# Define the configuration file
+CONFIG="/home/myuser/sing-box/config.json"
+
+# Path to the directory containing the sing-box source code
+SOURCE_DIR="/home/myuser/sing-box"
+
+# Define how often to rebuild the binary (in days)
+REBUILD_INTERVAL_DAYS="14"
+
+# Define the temporary file to store the last build time (inside the source directory)
+LAST_BUILD_TIME_FILE="${SOURCE_DIR}/.sb_last_build_time"
+
+# Lock file to prevent concurrent executions
+LOCK_FILE="${SOURCE_DIR}/.sb_cron_lock"
+
+# Timeout for acquiring the lock (in seconds)
+LOCK_TIMEOUT="60"
+
+# Retry interval for port check (in seconds)
+PORT_RETRY_INTERVAL="0.5"  # Significantly reduced retry interval
+PORT_RETRY_COUNT="3"   # Increased retry count for more reliability
+
+# Log file for sing-box output
+LOG_FILE="${SOURCE_DIR}/sbo.log"
+
+# Log file for script activity and stats
+STATS_LOG_FILE="${SOURCE_DIR}/sbs.log"
+
+# Variable to store if the script is running for the first time
+FIRST_RUN=1
+
+# --- End Variables ---
+
+# Function to log messages
+log() {
+  echo "$(date +%Y-%m-%d_%H:%M:%S): $1" 
+}
+
+# Function to rebuild the sing-box binary
+rebuild_binary() {
+  echo "Rebuilding sing-box binary..."
+  cd "${SOURCE_DIR}" || { echo "Error: Could not change directory to ${SOURCE_DIR}"; exit 1; }
+
+  # Sanitize environment variables before running go commands
+  export GOCACHE="$(pwd)/.cache/go-build"
+  export GOMODCACHE="$(pwd)/.cache/go-mod"
+
+  go clean -cache
+  go clean -modcache
+  go mod tidy
+  GOOS=openbsd GOARCH=amd64 go build -a -trimpath -ldflags="-buildid=" -tags "with_quic with_utls with_reality_server" -o "${BINARY_NAME}" ./cmd/sing-box || { echo "Error: Go build failed"; exit 1; }
+  # Move the newly built binary to the specified path
+  mv "${SOURCE_DIR}/${BINARY_NAME}" "${BINARY_PATH}" || { echo "Error: Failed to move binary"; exit 1; }
+  echo "Sing-box binary rebuilt and moved to ${BINARY}."
+
+  # Update the last build time in the temporary file
+  date +%s > "${LAST_BUILD_TIME_FILE}" || { echo "Error: Failed to update last build time"; exit 1; }
+  unset GOCACHE
+  unset GOMODCACHE
+}
+
+# Function to acquire the lock
+acquire_lock() {
+  start_time=$(date +%s)
+  while [ -f "${LOCK_FILE}" ]; do
+    PID=$(cat "${LOCK_FILE}")
+    if ps -p "$PID" > /dev/null 2>&1; then
+      echo "Another instance is already running (PID: $PID). Waiting..."
+    else
+      echo "Stale lock file found. Removing it."
+      rm -f "${LOCK_FILE}"
+      break
+    fi
+
+    current_time=$(date +%s)
+    elapsed_time=$((current_time - start_time))
+    if [ "$elapsed_time" -gt "${LOCK_TIMEOUT}" ]; then
+      echo "Timeout waiting for lock. Exiting."
+      exit 1
+    fi
+    sleep 5 # Wait before checking again
+  done
+
+  # Create a lock file
+  echo "$$" > "${LOCK_FILE}" || { echo "Error: Failed to create lock file"; exit 1; }
+}
+
+# Function to release the lock
+release_lock() {
+  rm -f "${LOCK_FILE}"
+}
+
+# Trap signals to release the lock file on exit
+trap "release_lock; exit" SIGHUP SIGINT SIGTERM
+
+# Acquire the lock
+acquire_lock
+
+# Check if the last build time file exists
+if [ ! -f "${LAST_BUILD_TIME_FILE}" ]; then
+  echo "Last build time file not found. Creating it..."
+  # If the file doesn't exist, create it and record the current time
+  date +%s > "${LAST_BUILD_TIME_FILE}" || { echo "Error: Failed to create last build time file"; release_lock; exit 1; }
+  chmod 600 "${LAST_BUILD_TIME_FILE}" # Limit permissions to owner only
+fi
+
+# Get the last build time from the file
+LAST_BUILD_TIME=$(cat "${LAST_BUILD_TIME_FILE}")
+
+# Check if LAST_BUILD_TIME is empty and set to 0 if it is
+if [ -z "$LAST_BUILD_TIME" ]; then
+  echo "LAST_BUILD_TIME is empty. Setting to 0."
+  LAST_BUILD_TIME=0
+fi
+
+# Get the current time
+CURRENT_TIME=$(date +%s)
+
+# Calculate the rebuild interval in seconds
+REBUILD_INTERVAL_SECONDS=$((REBUILD_INTERVAL_DAYS * 24 * 60 * 60))
+
+# Calculate the time difference since the last build
+TIME_DIFF=$((CURRENT_TIME - LAST_BUILD_TIME))
+
+# Check if the rebuild interval has passed
+if [ "$TIME_DIFF" -gt "${REBUILD_INTERVAL_SECONDS}" ]; then
+  echo "Rebuild interval has passed. Rebuilding binary..."
+  rebuild_binary
+  # Pause for 3 minutes (180 seconds)
+  echo "Pausing for 3 minutes..."
+  sleep 180
+else
+  echo "Rebuild interval has not passed. Skipping binary rebuild."
+fi
+
+# Initialize the stats log file if it doesn't exist
+if [ ! -f "${STATS_LOG_FILE}" ]; then
+  echo "Script Runs,Restarts" > "${STATS_LOG_FILE}"
+  echo "0,0" >> "${STATS_LOG_FILE}"
+fi
+
+# Read the existing stats from the log file
+STATS=$(head -n 1 "${STATS_LOG_FILE}")
+RUN_COUNT=$(awk -F, '{print $1}' "${STATS_LOG_FILE}" | tail -n 1)
+RESTART_COUNT=$(awk -F, '{print $2}' "${STATS_LOG_FILE}" | tail -n 1)
+
+# Function to check if sing-box is running and listening on the port
+is_singbox_running() {
+  # Use fstat to find processes listening on the port
+  FSTAT_OUTPUT=$(fstat -n | grep ":${PORT}")
+  PS_OUTPUT=$(ps aux | grep "${BINARY_NAME}" | grep -v grep)
+
+  # Determine the current state of sing-box
+  if [ -n "$FSTAT_OUTPUT" ] && [ -n "$PS_OUTPUT" ]; then
+    CURRENT_SINGBOX_STATE="running"
+  else
+    CURRENT_SINGBOX_STATE="stopped"
+  fi
+
+ #Add Logging here for the "is_singbox_running()".
+ if [ "$FIRST_RUN" -eq 1 ]; then
+	echo "--- Running checks ---"
+  echo "  fstat output: $FSTAT_OUTPUT"
+  echo "ps -ef output:$PS_OUTPUT"
+  FIRST_RUN=0
+  fi
+    #Added it now here, it looks like the 5 to 6 lost this ability to detect it (we need a 0 code if true, but for it you would need another PS)
+        if [ -n "$FSTAT_OUTPUT" ] && [ -n "$PS_OUTPUT" ]; then
+    return 0
+        else
+         return 1
+        fi
+  }
+
+# Check if sing-box is listening on the port and retry
+for i in $(seq 1 "${PORT_RETRY_COUNT}"); do
+  if is_singbox_running; then
+      :
+    release_lock
+    exit 0  # Exit successfully - sing-box is running
+  else
+    sleep "${PORT_RETRY_INTERVAL}"
+  fi
+done
+
+# Increment the run counter
+RUN_COUNT=$((RUN_COUNT + 1))
+
+# Increment the restart counter (since we're starting it)
+RESTART_COUNT=$((RESTART_COUNT + 1))
+
+# Update the stats log file
+echo "$RUN_COUNT,$RESTART_COUNT" > "${STATS_LOG_FILE}"
+
+echo "sing-box is not running after ${PORT_RETRY_COUNT} attempts. Starting it."
+
+# Run the sing-box binary, properly detached
+(
+  cd "${BINARY_PATH}" || exit 1
+  ./"${BINARY_NAME}" run -c "${CONFIG}" > "${LOG_FILE}" 2>&1 &
+)
+echo "Starting sing-box detached (logging to ${LOG_FILE})."
+
+# Release the lock
+release_lock
+
+exit 0
+```
+
+# when in doubt SSH-VPN
+shuttle --dns -NHr root@myserver-ip.ip:443 0/0 #
+sshuttle --dns -NHr ubuntu@myserver-ip.ipinfo:443 10.0.0.0/24 #
+
+# or when in doubt just SSH -D
+
+ssh -D 3128 my-server
  
 ```
 
-#### J.6. Integration with Infrastructure
-
-
-
-**Traffic Flow:**
-```
-Browser → Squid Proxy (10.1.0.1:3128) → Squid Proxy (10.0.0.33:3128) → WireGuard VPN → Internet
-```
-
-#### J.7. Testing and Verification
-
-**Test proxy functionality:**
-```bash
-# Check IP address through proxy chain
-curl --proxy http://10.1.0.1:3128 https://ipinfo.io/ip
-
-
-```
-
-**Fingerprinting tests:**
-- https://browserleaks.com/ - Comprehensive fingerprinting test
-- https://coveryourtracks.eff.org/ - EFF's privacy test
-- https://amiunique.org/ - Browser uniqueness test
-
-#### J.8. Troubleshooting
-
-```
-
-
-This section provides comprehensive debugging commands for monitoring and troubleshooting the OpenOCD security infrastructure.
+#Useful debugging commands
 
 #### K.1. Firewall (PF) Debugging
 
@@ -2163,7 +2690,6 @@ tcpdump -n -e -ttt -i pflog0
 tcpdump -n -e -ttt -i pflog0 host <IP_ADDRESS>
 tcpdump -n -e -ttt -i pflog0 port 51820  # For WireGuard
 
-
 # Monitor interface traffic directly
 tcpdump -ni vio0 port 443 or port 8080
 
@@ -2174,7 +2700,26 @@ pfctl -ss
 pfctl -v -sr
 ```
 
-#### K.2. Dynamic IP Management Debugging
+
+**Step 3: Debugging cmds for wg**
+```bash
+# Start WireGuard interface
+sh /etc/netstart wg0
+
+# Stop WireGuard interface  
+ifconfig wg0 destroy
+
+# Restart WireGuard interface
+ifconfig wg0 destroy && sh /etc/netstart wg0
+
+# Check interface status
+ifconfig wg0
+wg show wg0
+
+# View WireGuard configuration
+wg showconf wg0
+```
+
 
 **Script Monitoring:**
 ```bash
@@ -2196,13 +2741,6 @@ cat /usr/local/gotten-para
 # Check current ASN list
 cat /usr/local/asn_list.txt
 
-# Test DNS resolution manually
-dig +short example1.myhoster.com
-dig +short example2.yourhoster.com
-
-# Test with specific DNS server
-dig @127.0.0.1 +short example.com
-dig @10.0.0.1 +short example.com
 ```
 
 #### K.3. WireGuard VPN Debugging
@@ -2225,8 +2763,6 @@ ifconfig wg0 | grep "groups: wg"
 # Monitor WireGuard traffic
 wg show wg0 transfer
 
-# Check WireGuard in kernel messages
-dmesg | grep -i wireguard
 
 # Monitor WireGuard process (if userspace)
 top -d1 | grep wg
@@ -2247,6 +2783,8 @@ route -n show -inet -interface wg0
 
 # Test DNS through VPN
 dig @10.0.0.1 example.com
+dig @10.0.0.1 +tls example.com
+dig @10.0.0.1 +https example.com
 ```
 
 #### K.4. DNS Service Debugging
@@ -2274,18 +2812,9 @@ podman ps -a --filter name=adguard-home
 # View container logs
 podman logs adguard-home
 
-# Monitor container resource usage
-podman stats --no-stream adguard-home
 
-# Test encrypted DNS with AdGuard
-dig @10.0.0.33 -p 853 +tls example.com
-dig @10.0.0.33 -p 443 +https example.com
-
-# Check AdGuard web interface
-curl -k https://10.0.0.33:3000/
 ```
 
-#### K.5. Proxy Service Debugging
 
 **Squid Proxy:**
 ```bash
@@ -2295,34 +2824,14 @@ rcctl status squid
 # Test Squid configuration
 squid -k parse
 
-# Monitor Squid access logs
-tail -f /var/squid/logs/access.log
 
-# Monitor Squid cache logs
-tail -f /var/squid/logs/cache.log
-
-# Test proxy functionality
-curl --proxy http://10.0.0.1:3128 https://ipinfo.io/ip
-curl --proxy http://10.0.0.33:3128 https://ipinfo.io/ip
-
-# Check proxy chain
-curl --proxy http://10.1.0.1:3128 https://ipinfo.io/ip
 ```
 
-#### K.6. System Service Debugging
 
 **Service Status:**
 ```bash
 # Check all enabled services
 rcctl ls on
-
-# Check specific service status
-rcctl status unbound
-rcctl status squid
-
-# Check service logs
-tail -f /var/log/daemon
-tail -f /var/log/messages
 
 # Monitor system resources
 top -d1
@@ -2339,7 +2848,6 @@ netstat -rn
 **Basic Connectivity:**
 ```bash
 
-
 # Test DNS resolution
 nslookup example.com
 host example.com
@@ -2352,12 +2860,7 @@ tcpdump -i vio0 host example.com
 tcpdump -i wg0
 ```
 
-**Advanced Network Testing:**
 ```bash
-# Test MTU discovery
-ping -D -s 1472 example.com
-
-# Trace network path
 traceroute example.com
 
 # Monitor interface statistics
@@ -2371,30 +2874,10 @@ arp -a
 systat netstat
 ```
 
-
-```
-
-**Application Logs:**
-```bash
-# Firewall update logs
-/usr/local/firewall_update.log
-
-# ASN update logs
-/usr/local/asn_update.log
-
-# Squid logs
-/var/squid/logs/access.log
-/var/squid/logs/cache.log
-
-# AdGuard logs (if containerized)
-/path/to/adguard-home/logs/
-```
-
 #### K.9. Performance Monitoring
 
-**System Performance:**
 ```bash
-# CPU and memory usage
+
 top -d1
 
 # Disk I/O
@@ -2408,31 +2891,13 @@ ps aux | grep -E "(squid|unbound|wg)"
 
 # Memory usage details
 vmstat -m
-```
-
-**Security Monitoring:**
-```bash
-# Failed login attempts
-grep "Failed" /var/log/authlog
-
-# Sudo usage
-grep "sudo" /var/log/secure
 
 # PF blocked connections
 pfctl -s states | grep CLOSED
 
-# Monitor for suspicious activity
-tail -f /var/log/authlog | grep -E "(Failed|Invalid)"
-```
-
-This debugging section provides comprehensive tools for monitoring, troubleshooting, and maintaining your OpenOCD security infrastructure.
-
-#### K.10. System Administration Commands
-
-**System Shutdown and Reboot:**
-```bash
 # Shutdowns
 /sbin/halt -p 
 
 shutdown -r now 
+
 ```
