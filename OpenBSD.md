@@ -35,6 +35,82 @@ sysctl kern.securelevel
 sysctl net.inet.ip.forwarding
 ```
 
+
+#### C.1. Proxmox Hypervisor Traffic Forwarding
+
+Before configuring the OpenBSD PF firewall rules, it's important to understand how traffic reaches your OpenBSD security appliances when running in a virtualized environment like Proxmox.
+
+**Architecture Overview:**
+```
+Internet → Proxmox Host → OpenBSD VM (PF Firewall) → Backend Services
+```
+
+In this setup:
+- **Proxmox Host**: Acts as the hypervisor layer, receiving external traffic
+- **OpenBSD VM**: Runs one of the PF configurations below (C.2, C.3, C.4, or C.5)
+- **Backend Services**: Web servers, applications, or other VMs behind the OpenBSD firewall
+
+**Proxmox Host Configuration:**
+Configure traffic forwarding on the Proxmox host using iptables rules in `/etc/network/interfaces`:
+
+```bash
+## Network Configuration Variables
+real_adapter_name="vmbr0"           # Your Proxmox bridge interface
+openbsd_firewall_ip="10.10.10.13"   # IP of your OpenBSD PF firewall VM
+backend_server_ip="10.10.10.20"     # IP of backend server (if direct forwarding)
+
+## HTTPS Traffic Forwarding (Port 443)
+# Forward incoming HTTPS traffic to OpenBSD firewall for processing
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
+
+## HTTP Traffic Forwarding (Port 80)
+# Forward incoming HTTP traffic to OpenBSD firewall for processing
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
+
+## SSH Traffic Forwarding (Port 22)
+# Forward SSH traffic to OpenBSD firewall for access control
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 22 -j DNAT --to $openbsd_firewall_ip:22
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 22 -j DNAT --to $openbsd_firewall_ip:22
+
+## WireGuard VPN Traffic Forwarding (Port 51820)
+# Forward VPN traffic to OpenBSD firewall for VPN termination
+post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p udp --dport 51820 -j DNAT --to $openbsd_firewall_ip:51820
+post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 51820 -j DNAT --to $openbsd_firewall_ip:51820
+
+## Alternative: Direct Backend Forwarding (bypass OpenBSD for specific services)
+# Uncomment these if you want to forward certain traffic directly to backend servers
+#post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 8080 -j DNAT --to $backend_server_ip:8080
+#post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 8080 -j DNAT --to $backend_server_ip:8080
+```
+
+**Traffic Flow Examples:**
+
+1. **Web Traffic with OpenBSD Filtering:**
+   ```
+   Client → Proxmox:443 → OpenBSD:443 → Backend:8080
+   ```
+
+2. **VPN Traffic:**
+   ```
+   VPN Client → Proxmox:51820 → OpenBSD:51820 → WireGuard Tunnel
+   ```
+
+3. **SSH Access Control:**
+   ```
+   Admin → Proxmox:22 → OpenBSD:22 (PF rules apply dynamic IP filtering)
+   ```
+
+**Important Notes:**
+- The OpenBSD VM will receive traffic on its configured interface (typically `vio0`)
+- PF rules in the OpenBSD VM will then process this forwarded traffic
+- Choose one of the PF configurations below based on your security requirements
+- Ensure the OpenBSD VM has proper routing back to the Proxmox host for return traffic
+
+
+
+
 ### B. System Automation
 #### B.1. OpenBSD Cronjobs
 -  add via `crontab -e`  
@@ -229,81 +305,6 @@ fi
 ### B.4. System Debugging and Troubleshooting
 
 
-This debugging section provides comprehensive tools for monitoring, troubleshooting, and maintaining your OpenOCD security infrastructure. 
-### C. Network Infrastructure and Firewall Configuration
-
-#### C.1. Proxmox Hypervisor Traffic Forwarding
-
-Before configuring the OpenBSD PF firewall rules, it's important to understand how traffic reaches your OpenBSD security appliances when running in a virtualized environment like Proxmox.
-
-**Architecture Overview:**
-```
-Internet → Proxmox Host → OpenBSD VM (PF Firewall) → Backend Services
-```
-
-In this setup:
-- **Proxmox Host**: Acts as the hypervisor layer, receiving external traffic
-- **OpenBSD VM**: Runs one of the PF configurations below (C.2, C.3, C.4, or C.5)
-- **Backend Services**: Web servers, applications, or other VMs behind the OpenBSD firewall
-
-**Proxmox Host Configuration:**
-Configure traffic forwarding on the Proxmox host using iptables rules in `/etc/network/interfaces`:
-
-```bash
-## Network Configuration Variables
-real_adapter_name="vmbr0"           # Your Proxmox bridge interface
-openbsd_firewall_ip="10.10.10.13"   # IP of your OpenBSD PF firewall VM
-backend_server_ip="10.10.10.20"     # IP of backend server (if direct forwarding)
-
-## HTTPS Traffic Forwarding (Port 443)
-# Forward incoming HTTPS traffic to OpenBSD firewall for processing
-post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
-post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $openbsd_firewall_ip:443
-
-## HTTP Traffic Forwarding (Port 80)
-# Forward incoming HTTP traffic to OpenBSD firewall for processing
-post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
-post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $openbsd_firewall_ip:80
-
-## SSH Traffic Forwarding (Port 22)
-# Forward SSH traffic to OpenBSD firewall for access control
-post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 22 -j DNAT --to $openbsd_firewall_ip:22
-post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 22 -j DNAT --to $openbsd_firewall_ip:22
-
-## WireGuard VPN Traffic Forwarding (Port 51820)
-# Forward VPN traffic to OpenBSD firewall for VPN termination
-post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p udp --dport 51820 -j DNAT --to $openbsd_firewall_ip:51820
-post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 51820 -j DNAT --to $openbsd_firewall_ip:51820
-
-## Alternative: Direct Backend Forwarding (bypass OpenBSD for specific services)
-# Uncomment these if you want to forward certain traffic directly to backend servers
-#post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 8080 -j DNAT --to $backend_server_ip:8080
-#post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 8080 -j DNAT --to $backend_server_ip:8080
-```
-
-**Traffic Flow Examples:**
-
-1. **Web Traffic with OpenBSD Filtering:**
-   ```
-   Client → Proxmox:443 → OpenBSD:443 → Backend:8080
-   ```
-
-2. **VPN Traffic:**
-   ```
-   VPN Client → Proxmox:51820 → OpenBSD:51820 → WireGuard Tunnel
-   ```
-
-3. **SSH Access Control:**
-   ```
-   Admin → Proxmox:22 → OpenBSD:22 (PF rules apply dynamic IP filtering)
-   ```
-
-**Important Notes:**
-- The OpenBSD VM will receive traffic on its configured interface (typically `vio0`)
-- PF rules in the OpenBSD VM will then process this forwarded traffic
-- Choose one of the PF configurations below based on your security requirements
-- Ensure the OpenBSD VM has proper routing back to the Proxmox host for return traffic
-
 #### C.2. OpenBSD PF Rules - Basic Configuration (Static & Dynamic IPs)
 
 - You edit the pf rules on ` /etc/pf.conf ` and check via  `pfctl -nf /etc/pf.conf` and  load them via  `pfctl -f  /etc/pf.conf` | non - webserver example
@@ -399,23 +400,6 @@ pass out on $wireguard_iface from any to $wireguard_net keep state
 pass out on vio0 keep state
 ```
 
-#### C.3. (OPTIONAL) Hypervisor Forward Configuration
-- hypervisor forward example to -> openbsd pf firewall filtering forward to -> webserver
-- hypervisor targets can be forwarded via iptables in `/etc/network/interfaces` like:
-
-```
-## Variables
-real_adapter_name="ADAPTER_NAME"
-our_pf_firewall="10.10.10.13"  # 
-
-## Forward port 443 from the real adapter to backend server on port 443
-post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $backend_server_ip:443
-post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 443 -j DNAT --to $backend_server_ip:443
-
-## Forward port 80 from the real adapter to backend server on port 80
-post-up iptables -t nat -A PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $backend_server_ip:80
-post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p tcp --dport 80 -j DNAT --to $backend_server_ip:80
-```
 
 #### C.4. (Web Server PF Example)
 - version B (with webserver): pf then forwards to webserver that can be accessed from dynamic ips + static ips
