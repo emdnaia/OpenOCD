@@ -2341,12 +2341,11 @@ exit 0
 # when in doubt SSH-VPN
 ```
 shuttle --dns -NHr root@myserver-ip.ip:443 0/0 #
-sshuttle --dns -NHr ubuntu@myserver-ip.ipinfo:443 10.0.0.0/24 #
+sshuttle --dns -NHr username@myserver-ip.ipinfo:443 10.0.0.0/24 #
 ```
-# or when in doubt just SSH -D
+# or  SSH -D
 ```
 ssh -D 3128 my-server
- 
 ```
 
 #Useful debugging commands
