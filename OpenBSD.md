@@ -1427,6 +1427,39 @@ BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo,WebBluetooth,WebUSB,WebHID,WebS
 chmod +x ~/.local/share/applications/brave-hardened.desktop
 ```
 
+# CN privacy protocols
+- gameplan: expose 443 on the pf for dynamic hosts only -> nginx/haproxy does 443to8080 -> singbox provides trojan-gfw/hysteria2 on 8080
+  
+- the singbox project can do hysteria2 and trojan-gfw:
+```
+git clone https://github.com/SagerNet/sing-box.git
+```
+
+- For Linux client(s):
+```
+# Clean Go cache and modules
+go clean -cache
+go clean -modcache
+go mod tidy
+
+# Build for Linux with reproducible build flags
+GOOS=linux GOARCH=amd64 go build -a -trimpath -ldflags="-buildid=" -tags "with_quic with_utls with_reality_server" -o sing-box ./cmd/sing-box
+# Or install globally
+#go install -tags "with_quic with_utls with_reality_server" ./cmd/sing-box
+```
+
+- For OpenBSD server:
+```
+pkg_add go
+# Clean Go cache and modules
+go clean -cache
+go clean -modcache
+go mod tidy
+
+# Build for OpenBSD with reproducible build flags
+GOOS=openbsd GOARCH=amd64 go build -a -trimpath -ldflags="-buildid=" -tags "with_quic with_utls with_reality_server" -o sing-box ./cmd/sing-box
+```
+  
 # Chose Nginx or HAProxy
 - choose one or the other: HAProxy cannot proxy UDP in freemium as far as I know? via nginx you can (hysteria2)
 
@@ -1732,12 +1765,8 @@ backend sing
   ]
 }
 ```
-# singbox runner
-- A: you can just build the singbox binary for hysteria2 / trojan-gfw yourself; those were the flags I needed
-```
-  GOOS=openbsd GOARCH=amd64 go build -a -trimpath -ldflags="-buildid=" -tags "with_quic with_utls with_reality_server" -o "${BINARY_NAME}" ./cmd/sing-box || { echo "Error: Go build failed"; exit 1; }
-  # Move the newly built binary to the specified path
-```
+# optional: singbox runner
+
 - B: here is an experimental runner script to be added to a: NON root user &&  NON root cornjob 
 - `./runv6.sh` 
 ```
