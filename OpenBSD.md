@@ -128,7 +128,8 @@ post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 518
 30 13 * * * /usr/sbin/syspatch -c 
 32 13 * * * /usr/sbin/syspatch
 35 13 * * * /usr/sbin/pkg_add -u
-
+```
+```
 # Dynamic IP Management
 # - Initial IP update on system startup (20s delay)
 # - Regular IP updates at midnight and noon
