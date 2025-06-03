@@ -2275,7 +2275,6 @@ sh /etc/netstart wg0
 
 ```
 
-**Network Routing:**
 ```bash
 # Check routing table for VPN network
 route -n show -inet | grep 10.0.0
@@ -2288,7 +2287,6 @@ dig @10.0.0.1 +tls example.com
 dig @10.0.0.1 +https example.com
 ```
 
-#### K.4. DNS Service Debugging
 
 **Unbound DNS:**
 ```bash
@@ -2305,7 +2303,6 @@ tail -f /var/log/daemon | grep unbound
 unbound-control stats_noreset
 ```
 
-**AdGuard Home (if using containerized setup):**
 ```bash
 # Check container status
 podman ps -a --filter name=adguard-home
@@ -2339,7 +2336,6 @@ netstat -an | grep LISTEN
 netstat -rn
 ```
 
-**Basic Connectivity:**
 ```bash
 # Test DNS resolution
 nslookup example.com
