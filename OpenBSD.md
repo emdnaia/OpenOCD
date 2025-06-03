@@ -1622,7 +1622,6 @@ BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo,WebBluetooth,WebUSB,WebHID,WebS
   --ignore-certificate-errors \
   "$@"
 
-
 ```
 
 **Make executable:**
@@ -1641,6 +1640,7 @@ The browser configuration implements a two-hop proxy chain:
 
 #### I.1. Nginx Stream Configuration
 - Save as `/etc/nginx/nginx.conf`
+
 ```
 worker_processes auto;
 load_module modules/ngx_stream_module.so;
@@ -1666,11 +1666,13 @@ stream {
 #        proxy_pass singbox_backend;
 #    }
 }
+
 ```
 
 #### I.1.1. HAProxy Configuration (Alternative for TCP-based protocols)
 
 - Installation and management:
+
 ```
 # Install HAProxy
 pkg_add haproxy
@@ -1687,6 +1689,7 @@ rcctl reload haproxy
 ```
 
 - Save as `/etc/haproxy/haproxy.cfg`
+
 ```
 global
     log 127.0.0.1 local0 debug
@@ -1719,11 +1722,12 @@ backend sing
     server trojan 127.0.0.1:8080
 ```
 
-
-
 #### I.2. Trojan Protocol Configuration
 ##### I.2.1. Client Configuration
+
+
 - Save as `client-config.json`
+
 ```
 {
   "log": {
@@ -1921,6 +1925,7 @@ backend sing
 }
 ```
 # singbox runner
+
 - runner2.sh
 
 ```
@@ -2334,18 +2339,17 @@ exit 0
 ```
 
 # when in doubt SSH-VPN
+```
 shuttle --dns -NHr root@myserver-ip.ip:443 0/0 #
 sshuttle --dns -NHr ubuntu@myserver-ip.ipinfo:443 10.0.0.0/24 #
-
+```
 # or when in doubt just SSH -D
-
+```
 ssh -D 3128 my-server
  
 ```
 
 #Useful debugging commands
-
-#### K.1. Firewall (PF) Debugging
 
 **PF Table Management:**
 ```bash
@@ -2412,6 +2416,7 @@ wg showconf wg0
 
 **Script Monitoring:**
 ```bash
+
 # Monitor firewall update logs
 tail -f /usr/local/firewall_update.log
 
@@ -2469,8 +2474,6 @@ route -n show -inet | grep 10.0.0
 # Check interface routing
 route -n show -inet -interface wg0
 
-
-# Test DNS through VPN
 dig @10.0.0.1 example.com
 dig @10.0.0.1 +tls example.com
 dig @10.0.0.1 +https example.com
@@ -2501,11 +2504,9 @@ podman ps -a --filter name=adguard-home
 # View container logs
 podman logs adguard-home
 
-
 ```
 
-
-**Squid Proxy:**
+**Squid :**
 ```bash
 # Check Squid status
 rcctl status squid
@@ -2513,11 +2514,8 @@ rcctl status squid
 # Test Squid configuration
 squid -k parse
 
-
 ```
 
-
-**Service Status:**
 ```bash
 # Check all enabled services
 rcctl ls on
@@ -2532,11 +2530,8 @@ netstat -an | grep LISTEN
 netstat -rn
 ```
 
-#### K.7. Network Connectivity Testing
-
 **Basic Connectivity:**
 ```bash
-
 # Test DNS resolution
 nslookup example.com
 host example.com
@@ -2562,8 +2557,6 @@ arp -a
 # Monitor bandwidth usage
 systat netstat
 ```
-
-#### K.9. Performance Monitoring
 
 ```bash
 
