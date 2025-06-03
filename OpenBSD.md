@@ -1063,10 +1063,10 @@ log "  Logs:    podman logs ${CONTAINER_NAME}"
 log "  Status:  podman ps -a --filter name=${CONTAINER_NAME}"
 ```
 
-### G. Linux Dynamic IP Management
+### Squid
 
+- remember to first time initialize
 ```
-- enable restart initialize cache
 pkg_add -u
 pkg_add squid
 rcctl enable squid
