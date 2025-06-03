@@ -1,7 +1,5 @@
 # OpenOCD - Operational Defense & Concealment Infrastructure
 
-
-
 #### A.3.1. Kernel Security Settings
 - Configure system security parameters in `/etc/sysctl.conf`:
 
@@ -34,7 +32,6 @@ sysctl kern.wxabort=1
 sysctl kern.securelevel
 sysctl net.inet.ip.forwarding
 ```
-
 
 #### C.1. Proxmox Hypervisor Traffic Forwarding
 
@@ -107,8 +104,6 @@ post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 518
 - PF rules in the OpenBSD VM will then process this forwarded traffic
 - Choose one of the PF configurations below based on your security requirements
 - Ensure the OpenBSD VM has proper routing back to the Proxmox host for return traffic
-
-
 
 
 ### B. System Automation
@@ -304,12 +299,13 @@ fi
 # via openbsd
 # tail -f /var/log/messages | grep "phone-ip-check"
 ### B.4. System Debugging and Troubleshooting
-
+```
 
 #### C.2. OpenBSD PF Rules - Basic Configuration (Static & Dynamic IPs)
 
 - You edit the pf rules on ` /etc/pf.conf ` and check via  `pfctl -nf /etc/pf.conf` and  load them via  `pfctl -f  /etc/pf.conf` | non - webserver example
 - version A (more secure)
+
 ```
 # $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
 #
