@@ -1881,7 +1881,7 @@ sshuttle --dns -NHr username@myserver-ip.ipinfo:443 10.0.0.0/24 #
 ssh -D 3128 my-server
 ```
 
-# beginner friendly debugging commands you might need
+# optional: debugging commands section
 
 ```bash
 # Show dynamic hosts table contents
