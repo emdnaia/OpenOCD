@@ -1733,10 +1733,13 @@ backend sing
 }
 ```
 # singbox runner
-runner script to be added to a cornjob to do an unpriv singbox binary via 8080 -> (nginx/haproxy) 443
-
-- `./runv6.sh`
-
+- A: you can just build the singbox binary for hysteria2 / trojan-gfw yourself; those were the flags I needed
+```
+  GOOS=openbsd GOARCH=amd64 go build -a -trimpath -ldflags="-buildid=" -tags "with_quic with_utls with_reality_server" -o "${BINARY_NAME}" ./cmd/sing-box || { echo "Error: Go build failed"; exit 1; }
+  # Move the newly built binary to the specified path
+```
+- B: here is an experimental runner script to be added to a: NON root user &&  NON root cornjob 
+- `./runv6.sh` 
 ```
 #!/bin/sh
 
@@ -2190,3 +2193,9 @@ pfctl -s states | grep CLOSED
 
 shutdown -r now 
 ```
+
+good luck
+
+future ideas:
+- port knocking
+- nginx cert auth at start requirement
