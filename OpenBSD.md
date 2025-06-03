@@ -259,6 +259,7 @@ log "=== asn_allow.sh done ==="
 #### B.3. Phone IP Check Script
 - This script monitors IP changes for mobile devices
 - Save as `/usr/local/phone-ip-check.sh`
+  
 ```sh
 #!/bin/sh
 
@@ -301,10 +302,9 @@ fi
 ### B.4. System Debugging and Troubleshooting
 ```
 
-#### C.2. OpenBSD PF Rules - Basic Configuration (Static & Dynamic IPs)
-
 - You edit the pf rules on ` /etc/pf.conf ` and check via  `pfctl -nf /etc/pf.conf` and  load them via  `pfctl -f  /etc/pf.conf` | non - webserver example
-- version A (more secure)
+  
+#### C2A
 
 ```
 # $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
@@ -319,20 +319,12 @@ fi
 ###  could be doing redirection like:
 #pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
 
-###  try flagging and rate limiting like: 
-#pass in on vio0 proto tcp to port 443 \
-#  flags S/SA keep state \
-#  (max-src-conn 100, max-src-conn-rate 15/5, \
-#  overload <abusive_ips> flush)
-#-----  examples end #----- 
-
 # Configuration Variables
 dynamic_hosts_file="/usr/local/gotten-para"  # Location for dynamic hosts
 wireguard_port="51820"                        # Your WireGuard VPN port
 wireguard_net="10.0.0.0/24"                 # Your WireGuard VPN network
 ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"  # IPs allowed for SSH
 wireguard_iface="wg0"                       # WireGuard interface identifier
-
 
 # ===== Basic Security Settings =====
 # Block all IPv6 traffic for security
@@ -397,293 +389,23 @@ pass out on $wireguard_iface from any to $wireguard_net keep state
 pass out on vio0 keep state
 ```
 
+#### C2B 
 
-#### C.4. (Web Server PF Example)
-- version B (with webserver): pf then forwards to webserver that can be accessed from dynamic ips + static ips
-- dns is internal and can connect to the vpn
 ```
-# $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
-#
-# See pf.conf(5) and /etc/examples/pf.conf
+# $OpenBSD: pf.conf,v 1.55 2017/12/03
 
-# Configuration Variables
-dynamic_hosts_file="/usr/local/gotten-para"  # Location for dynamic hosts
-wireguard_port="51820"                       # WireGuard VPN port
-wireguard_net="10.0.0.0/24"                  # WireGuard VPN network
-ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"  # IPs allowed for SSH
-wireguard_iface="wg0"                        # WireGuard interface identifier
-
-# Dynamic IPs table
-table <dynamic_hosts> persist file "/usr/local/gotten-para"
-
-# Block all IPv6 traffic
-block drop quick inet6
-
-# ---- Sing-box/Proxy Redirection Examples ----
-#pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
-
-# Redirect incoming HTTPS (443) traffic to Sing-box on localhost:8080
-#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
-#pass in quick proto tcp from any to 127.0.0.1 port 8080
-
-# Port forwarding examples
-#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
-
-# Redirect HTTPS to HAProxy
-#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 443
-
-# ---- Advanced Scrubbing Examples (commented) ----
-# Basic packet scrubbing options
-#block in quick proto tcp flags U/U
-#pass in proto tcp flags S/SAFR
-# min-ttl 15 max-ttl 64
-#block in quick proto tcp from any to any flags any ttl > 220
-#scrub in all fragment reassemble
-# pass in on vio0 proto tcp to $web_server port www synproxy state
-
-# Additional redirection examples
-#rdr pass on egress proto udp from any to (egress) port 443 -> 127.0.0.1 port 8080
-#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
-#pass in on vio0 proto { tcp, udp } from any to (vio0) port {443, 8080} keep state
-#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
-
-# Sing-box specific examples
-#pass in on vio0 proto udp from any to 127.0.0.1 port 443 rdr-to 127.0.0.1 port 8080 keep state
-#pass in on vio0 proto udp from any to any port 8080 keep state
-#pass in quick log on vio0 proto { udp tcp } from any to (vio0) port 443 keep state
-#pass out quick log on vio0 proto tcp to any port 443 keep state
-
-# Rate limiting examples
-#pass in on vio0 proto tcp to port 443 flags S/SA \
-#  keep state (max-src-conn 100, max-src-conn-rate 15/5, \
-#  overload <abusive_hosts> flush)
-#pass in on vio0 proto tcp to port 443 \
-#  flags S/SA keep state \
-#  (max-src-conn 100, max-src-conn-rate 15/5, \
-#  overload <abusive_ips> flush)
-
-# State Tracking examples
-#pass in log (all) on vio0 proto tcp from any to port 443 flags S/SA keep state \
-#  (max-src-conn 500, max-src-nodes 1000, overload <abusive_ips> flush global)
-
-# Stateful Filtering Rules examples
-#pass in log on vio0 proto tcp from any to (vio0) port 443 flags S/SA keep state
-#pass in log on vio0 proto tcp from any to (vio0) port 8080 flags S/SA keep state
-
-# Advanced redirection examples
-#pass in log on vio0 proto {tcp, udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
-
-#pass in quick proto { tcp, udp } from <dynamic_hosts> to (vio0) port 443 flags S/SA keep state
-#pass in quick proto { tcp, udp } from <dynamic_hosts> to (vio0) port 8080 flags S/SA keep state
-
-# Port forwarding to backend servers
-#pass in quick log on vio0 proto tcp from <dynamic_hosts> to any port 443 flags S/SA keep state
-#pass in quick log on vio0 proto tcp from <dynamic_hosts> to any port 8080 flags S/SA keep state
-
-# Rate Limiting with overload protection
-#pass in log (all) on vio0 proto tcp from any to (vio0) port 443 flags S/SA keep state \
-#  (max-src-conn 100, max-src-conn-rate 15/5, overload <abusive_ips> flush global)
-
-# Stateful Outbound examples
-#pass out on vio0 proto tcp from any to any port 8080 flags S/SA keep state
-#pass out on vio0 proto tcp from any to any port 443 flags S/SA keep state
-
-# Final redirection examples
-#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
-#pass in quick proto tcp from any to 127.0.0.1 port 8080
-
-#pass in quick log on vio0 proto { udp tcp } from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 8080 keep state
-#pass out on vio0 proto tcp to port 8080 keep state
-#pass out on vio0 proto tcp to port 443 keep state
-#pass in quick log on vio0 proto { udp tcp } from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 8080
-#rdr-to 127.0.0.1 port 8080 keep state
-
-# Set block policy to drop
-set block-policy drop
-set skip on lo  # Skip loopback traffic
-
-# Block packets with URG flag set (commonly used in attacks)
-block in on vio0 proto tcp flags U/U
-
-# Anti-spoofing rule for external interface
-antispoof quick for vio0 inet
-
-# ---- Scrubbing ----
-# Basic packet scrubbing
-match in on vio0 scrub (no-df random-id max-mss 1440 reassemble tcp)
-
-# ---- X11 Blocking ----
-# Block X11 connections
-block return in log on !lo0 proto tcp to port 6000:6010
-
-# ---- User Restrictions ----
-# Prevent network access for _pbuild user
-block drop out log proto {tcp udp} user _pbuild
-
-# ---- DHCP/BOOTP Blocking ----
-# Block broadcast DHCP traffic
-block drop in log quick on vio0 proto udp from any to 255.255.255.255 port 67:68
-
-# Block all DHCP/BOOTP traffic
-block drop in log quick on vio0 proto udp from any to any port 67:68
-
-# ---- Block Private Addresses ----
-# Block spoofed private addresses on external interface
-block drop in log quick on vio0 from {10.0.0.0/8 , 172.16.0.0/12, 192.168.0.0/16, 255.255.255.255/32} to any
-
-# ---- SSH Rules ----
-# Allow SSH from specific IPs
-pass in quick on vio0 proto tcp from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 22 keep state
-
-# ---- Port Forwarding and Traffic Handling ---- CERTBOT
-# Allow access to port 80 (HTTP) and 443 (HTTPS) for certificate management
-#pass in quick log on vio0 proto tcp from any to any port 443 keep state
-#pass in quick log on vio0 proto tcp from any to any port 8080 keep state
-
-# ---- Default Block Rules ----
-# Block all inbound traffic by default
-block drop in log on vio0 all
-
-# ---- NAT Rules ----
-# NAT for outgoing traffic from WireGuard network
-match out on egress inet from $wireguard_net to any nat-to (egress:0)
-
-# ---- Proxy/VPN Service Rules ----
-# Allow trojan-gfw protocols
-pass in log on vio0 proto { tcp, udp } from <dynamic_hosts> to (vio0) port {443} keep state
-pass in log on vio0 proto { tcp, udp } from { <dynamic_hosts> } to (vio0) port {853} keep state
-
-# ---- WireGuard Rules ----
-# Allow WireGuard traffic from dynamic hosts
-pass in log on vio0 proto udp from <dynamic_hosts> to (vio0) port $wireguard_port keep state
-
-# Allow all traffic on WireGuard interface
-pass in on $wireguard_iface from $wireguard_net to any keep state
-pass out on $wireguard_iface from any to $wireguard_net keep state
-
-# ---- DNS Rules (commented examples) ----
-# Allow DNS requests from specified IPs
-#pass in quick on vio0 proto {udp, tcp} from $ssh_allowed_ips to any port 53 keep state
-#pass in on $wireguard_iface proto udp from $wireguard_net to $wireguard_net port 53 keep state
-#pass out on $wireguard_iface proto udp from $wireguard_net to $wireguard_net port 53 keep state
-
-# ---- Outbound Traffic ----
-# Allow all outbound traffic
-pass out on vio0 keep state
-```
-
-#### C.5. (Production PF Example with Proxy Support)
-- version C (production): Advanced configuration with proxy forwarding and extensive security hardening
-- Based on real-world deployment with sing-box/proxy integration capabilities
-```
-# $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
-#
-# See pf.conf(5) and /etc/examples/pf.conf
-
-# Configuration Variables
-dynamic_hosts_file="/usr/local/gotten-para"  # Location for dynamic hosts
-wireguard_port="51820"                       # WireGuard VPN port (standard)
-wireguard_net="10.0.0.0/24"                  # WireGuard VPN network
-ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32}"  # IPs allowed for SSH
-wireguard_iface="wg0"                        # WireGuard interface identifier
-
-# Dynamic IPs table
-table <dynamic_hosts> persist file "/usr/local/gotten-para"
-
-# Block all IPv6 traffic
-block drop quick inet6
-
-# ---- Proxy/Sing-box Redirection (commented examples) ----
-# Redirect incoming HTTPS (443) traffic to local proxy/sing-box
-#rdr pass on vio0 proto tcp from any to (vio0) port 443 -> 127.0.0.1 port 8080
-#pass in quick proto tcp from any to 127.0.0.1 port 8080
-
-# Alternative proxy redirection for dynamic hosts only
-#pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
-
-# Set block policy to drop
-set block-policy drop
-set skip on lo  # Skip loopback traffic
-
-# Block packets with URG flag set (commonly used in attacks)
-block in on vio0 proto tcp flags U/U
-
-# Anti-spoofing rule for external interface
-antispoof quick for vio0 inet
-
-# ---- Enhanced Scrubbing ----
-# Advanced packet scrubbing with security hardening
-match in on vio0 scrub (no-df random-id max-mss 1440 reassemble tcp)
-
-# ---- X11 Blocking ----
-# Block X11 connections for security
-block return in log on !lo0 proto tcp to port 6000:6010
-
-# ---- User Restrictions ----
-# Prevent network access for _pbuild user
-block drop out log proto {tcp udp} user _pbuild
-
-# ---- DHCP/BOOTP Blocking ----
-# Block broadcast DHCP traffic
-block drop in log quick on vio0 proto udp from any to 255.255.255.255 port 67:68
-
-# Block all DHCP/BOOTP traffic
-block drop in log quick on vio0 proto udp from any to any port 67:68
-
-# ---- Block Private Addresses ----
-# Block spoofed private addresses on external interface
-block drop in log quick on vio0 from {10.0.0.0/8 , 172.16.0.0/12, 192.168.0.0/16, 255.255.255.255/32} to any
-
-# ---- SSH Rules ----
-# Allow SSH from dynamic hosts and specific IPs
-pass in quick on vio0 proto tcp from {<dynamic_hosts>, $ssh_allowed_ips} to (vio0) port 22 keep state
-
-# ---- Default Block Rules ----
-# Block all inbound traffic by default
-block drop in log on vio0 all
-
-# ---- NAT Rules ----
-# NAT for outgoing traffic from WireGuard network
-match out on egress inet from $wireguard_net to any nat-to (egress:0)
-
-# ---- Proxy/VPN Service Rules ----
-# Allow trojan-gfw (TCP) and hysteria2 (UDP) protocols
-pass in log on vio0 proto { tcp, udp } from <dynamic_hosts> to (vio0) port {443} keep state
-
-# Allow encrypted DNS (DoT) access
-pass in log on vio0 proto { tcp, udp } from { <dynamic_hosts> } to (vio0) port {853} keep state
-
-# ---- WireGuard Rules ----
-# Allow WireGuard traffic from dynamic hosts
-pass in log on vio0 proto udp from <dynamic_hosts> to (vio0) port $wireguard_port keep state
-
-# Allow all traffic on WireGuard interface
-pass in on $wireguard_iface from $wireguard_net to any keep state
-pass out on $wireguard_iface from any to $wireguard_net keep state
-
-# ---- Outbound Traffic ----
-# Allow all outbound traffic
-pass out on vio0 keep state
-```
-
-#### C.5. (Advanced Web Server PF Example with ASN Support)
-- version D (advanced): Web server configuration with ASN tables and port forwarding
-- Based on production deployment with backend server redirection capabilities
-```
-# $OpenBSD: pf.conf,v 1.55 2017/12/03 20:40:04 sthen Exp $
-
-wireguard_port="{80}"
+wireguard_port="{51820}"
 wireguard_net="10.0.0.0/24"
 
-ssh_allowed_ips="{6.6.6.6/32, 7.7.7.7/32, 10.0.1.1/32, 10.0.1.34/32}"
+ssh_allowed_ips="{1.1.1.1/32, 8.8.8.8/32, 10.0.1.1/32, 10.0.1.34/32}"
 
 table <dynamic_hosts> persist file "/usr/local/gotten-para"
-table <asn> persist file "/usr/local/asn_list.txt"
-table <cloudflare_ips> persist file "/usr/local/cloudflare"
+table <asn>            persist file "/usr/local/asn_list.txt"
 
 block drop quick inet6
 
 set block-policy drop
+
 set skip on lo
 
 block drop in on vio0 proto tcp flags U/U
@@ -692,27 +414,28 @@ antispoof quick for vio0 inet
 
 match in on vio0 scrub (no-df random-id max-mss 1440 reassemble tcp)
 
-block return in on ! lo0 proto tcp to port 6000:6010
+block return in  on !lo0 proto tcp to port 6000:6010
+block return out log proto { tcp udp } user _pbuild
 
-block return out log proto {tcp udp} user _pbuild
+block drop  in  log on vio0 from { 10.0.0.0/8 , 172.16.0.0/12 , 192.168.0.0/16 , 255.255.255.255/32 } to any
 
-block drop in log on vio0 from {10.0.0.0/8 , 172.16.0.0/12, 192.168.0.0/16, 255.255.255.255/32 } to any
+pass  in   quick on vio0 proto tcp from $ssh_allowed_ips to (vio0) port 22 keep state
 
-pass in quick on vio0 proto tcp from $ssh_allowed_ips to (vio0) port 22 keep state
+block drop in  log on vio0 all
 
-block drop in log on vio0 all
+match out  on egress inet from $wireguard_net to any nat-to (egress:0)
 
-match out on egress inet from $wireguard_net to any nat-to (egress:0)
+#pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port { 80,443 } keep state
+#pass in log on vio0 proto tcp from $wireguard_net to 10.1.6.27 port 443 rdr-to 10.2.6.207 port 443 keep state
 
-pass in log on vio0 proto udp from <asn> to (vio0) port $wireguard_port keep state
-pass in log on vio0 proto udp from <dynamic_hosts> to (vio0) port $wireguard_port keep state
+pass  in   log on vio0 proto udp from <asn>            to (vio0) port $wireguard_port keep state
+pass  in   log on vio0 proto udp from <dynamic_hosts>  to (vio0) port $wireguard_port keep state
+pass  in   log on vio0 proto udp from 10.0.0.25        to (vio0) port $wireguard_port keep state
 
-pass in on vio0 proto udp from 10.0.1.34 to (vio0) port $wireguard_port keep state
+pass  in   on  wg0 from $wireguard_net to any keep state
+pass  out  on  wg0 from any to $wireguard_net keep state
+pass  out  on  vio0 keep state
 
-pass in on wg0 from $wireguard_net to any keep state
-pass out on wg0 from any to $wireguard_net keep state
-
-pass out on vio0 keep state
 ```
 
 ### D. Dynamic IP Management
