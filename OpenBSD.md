@@ -1636,7 +1636,7 @@ The browser configuration implements a two-hop proxy chain:
 1. **First Hop (P1):** `10.1.0.1:3128` - Entry proxy server
 2. **Second Hop (P2):** `10.0.0.33:3128` - Exit proxy server
 
-```
+
 
 #### I.1. Nginx Stream Configuration
 - Save as `/etc/nginx/nginx.conf`
