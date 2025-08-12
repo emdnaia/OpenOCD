@@ -444,7 +444,7 @@ pass  out  on  vio0 keep state
 ```
 
 ### D. Dynamic IP Management
-#### D.1. Dynamic Hosts Script
+#### D.1. OpenBSD version
 - Important: All your clients will need to get FQDNs, and you can do that by adding for example containers in your home, work etc, that use any DYNDNS-hoster.
 - Next, *Ensure you replace `hoster1 + hoster2` with your actual domains to allow dynamic access from.*
 - The script below will access the FQDN and add it to the firewall ruletable for access.
@@ -603,6 +603,187 @@ done
 update_pf_table
 log "=== FIREWALL UPDATE COMPLETED ==="
 ```
+#### D.2. Linux version
+
+remove ufw and install firewalld
+
+```
+#!/bin/bash
+
+# Check if the script is run as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run as root."
+    exit 1
+fi
+
+# Define FQDNs
+FQDN1="myhost1.myhoster.org"
+FQDN2="myhost2.myhoster.org"
+
+# Variables
+WORK_DIR="/usr/local"
+TEMP_IP_FILE="$WORK_DIR/temp_gotten_para"
+FINAL_IP_FILE="$WORK_DIR/gotten-para"
+LOG_FILE="$WORK_DIR/firewall_update.log"
+
+MAX_IP_COUNT=3
+IP_RETENTION_DAYS=7
+IP_SET_NAME="dynamic_hosts"
+PUBLIC_ZONE="public"
+SERVICE_PORT="51820"          # Service port for public interface
+SERVICE_PROTOCOL="udp"       # Protocol: 'tcp' or 'udp'
+
+# Ensure required commands are available
+REQUIRED_CMDS=(dig firewall-cmd awk touch grep date sort tail id)
+for cmd in "${REQUIRED_CMDS[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Required command '$cmd' is not installed. Please install it and retry."
+        exit 1
+    fi
+done
+
+# Setup and cleanup environment
+> "$TEMP_IP_FILE"  # Clear temporary file
+> "$FINAL_IP_FILE"  # Clear final IP file
+touch "$LOG_FILE"  # Ensure log file exists
+exec 3>&1 1>>"$LOG_FILE" 2>&1  # Redirect stdout and stderr to log file
+
+# Set secure permissions for log and temp files
+chmod 600 "$TEMP_IP_FILE" "$FINAL_IP_FILE" "$LOG_FILE"
+
+# Function to log messages with timestamps
+log() {
+    echo "$(date "+%Y-%m-%d %H:%M:%S") - $1"
+}
+
+# Function to execute commands and log their output
+execute_command() {
+    echo "Executing command: ${*}" >&3  # Log command to stdout
+    "${@}"
+    local status=$?
+    if [ $status -ne 0 ]; then
+        log "ERROR: Failed to execute: ${*}"
+        return $status
+    else
+        log "SUCCESS: Executed: ${*}"
+    fi
+}
+
+# Function to ensure files exist
+ensure_files_exist() {
+    touch "$1" 2>/dev/null || {
+        log "Failed to touch $1. Check permissions."
+        exit 1
+    }
+}
+
+# Ensure temporary and final IP files exist
+ensure_files_exist "$TEMP_IP_FILE"
+ensure_files_exist "$FINAL_IP_FILE"
+
+validate_fqdn() {
+    local fqdn=$1
+    if [[ "$fqdn" =~ ^[A-Za-z0-9.-]+$ ]]; then
+        return 0
+    else
+        log "Invalid FQDN: $fqdn"
+        return 1
+    fi
+}
+
+resolve_ip() {
+    local FQDN=$1
+    validate_fqdn "$FQDN" || return 1
+
+    local CURRENT_IP
+    CURRENT_IP=$(/usr/bin/dig +short "$FQDN" | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    local CURRENT_TIMESTAMP
+    CURRENT_TIMESTAMP=$(date +%s)
+
+    # Ensure the FQDN is resolved to a valid IP address
+    if [ -z "$CURRENT_IP" ]; then
+        log "No valid IP address found for $FQDN"
+        return 1
+    fi
+
+    # Validate IP address format
+    if ! echo "$CURRENT_IP" | grep -Eo '^([0-9]{1,3}\.){3}[0-9]{1,3}$' >/dev/null; then
+        log "Invalid IP address format: $CURRENT_IP"
+        return 1
+    fi
+
+    # Check if the same IP with the same timestamp already exists
+    if ! grep -q "$CURRENT_TIMESTAMP $CURRENT_IP" "$TEMP_IP_FILE"; then
+        echo "$CURRENT_TIMESTAMP $CURRENT_IP" >> "$TEMP_IP_FILE"
+        log "Added IP $CURRENT_IP to $TEMP_IP_FILE"
+    else
+        log "Duplicate IP entry for $CURRENT_IP at $CURRENT_TIMESTAMP skipped"
+    fi
+}
+
+# Resolve IPs for both FQDNs and handle failures
+if ! resolve_ip "$FQDN1"; then
+    log "Failed to resolve $FQDN1"
+fi
+
+if ! resolve_ip "$FQDN2"; then
+    log "Failed to resolve $FQDN2"
+fi
+
+# Process TEMP_IP_FILE to ensure uniqueness, limit the number of IPs, and consider the retention period
+log "Processing $TEMP_IP_FILE to update $FINAL_IP_FILE"
+awk -v max_count="$MAX_IP_COUNT" -v retention_days="$IP_RETENTION_DAYS" -v current_time="$(date +%s)" '{
+    ip = $2
+    timestamp = $1
+    if (!seen[ip]++ && (current_time - timestamp) <= (retention_days * 86400)) {
+        print ip
+        if (++count >= max_count) exit
+    }
+}' "$TEMP_IP_FILE" | sort -u | tail -n "$MAX_IP_COUNT" > "$FINAL_IP_FILE"
+
+# Check if there are valid IPs to add
+if [ -s "$FINAL_IP_FILE" ]; then
+    log "Final IP file contains valid entries."
+else
+    log "No valid IPs resolved. Exiting script."
+    exit 0  # Exit cleanly if no valid IPs are resolved
+fi
+
+# Log current IPs before update
+log "Current IP set entries before update:"
+/usr/bin/firewall-cmd --ipset="$IP_SET_NAME" --get-entries >> "$LOG_FILE" 2>/dev/null || log "IP set not found."
+
+# Update the IP set without deleting it to avoid downtime
+if ! /usr/bin/firewall-cmd --permanent --get-ipsets | grep -qw "$IP_SET_NAME"; then
+    log "IP set $IP_SET_NAME does not exist, creating a new one."
+    execute_command /usr/bin/firewall-cmd --permanent --new-ipset="$IP_SET_NAME" --type=hash:ip
+fi
+
+# Flush existing entries in the IP set
+execute_command /usr/bin/firewall-cmd --permanent --ipset="$IP_SET_NAME" --flush
+
+# Add new IPs to the IP set
+log "Adding IPs to the IP set"
+while read -r ip; do
+    execute_command /usr/bin/firewall-cmd --permanent --ipset="$IP_SET_NAME" --add-entry="$ip"
+done < "$FINAL_IP_FILE"
+
+# Open the specified port and protocol in the public zone
+log "Opening port $SERVICE_PORT/$SERVICE_PROTOCOL in the public zone"
+if ! /usr/bin/firewall-cmd --permanent --zone="$PUBLIC_ZONE" --query-port="${SERVICE_PORT}/${SERVICE_PROTOCOL}"; then
+    execute_command /usr/bin/firewall-cmd --permanent --zone="$PUBLIC_ZONE" --add-port="${SERVICE_PORT}/${SERVICE_PROTOCOL}"
+fi
+
+# Reload firewall to apply changes
+execute_command /usr/bin/firewall-cmd --reload
+
+log "Firewall rules updated with the latest IPs and port settings."
+
+# Cleanup and close logging
+exec 1>&3 3>&-
+
+echo "Firewall update complete. See $LOG_FILE for details."
+```
 
 ### E. VPN Configuration
 #### E.1. WireGuard Setup - Kernel Mode (OpenBSD 7.6+)
@@ -655,7 +836,6 @@ inet 10.0.0.1 255.255.255.0 NONE
 !/usr/local/bin/wg setconf wg0 /etc/wireguard/wg0.conf
 up
 ```
-
 
 #### E.3. Client Configuration
 
@@ -773,6 +953,109 @@ forward-zone:
   forward-addr: 1.1.1.1@853#cloudflare-dns.com
   forward-addr: 8.8.8.8@853#dns.google
 
+#Include the blocklist for ads
+#include: "/home/lowpriv_user/blacklist.conf"
+```
+##### F.01: Unbound Adblocker
+
+on OpenBSD to be ran on a lowpriv user
+- create at /home/lowpriv_user/blocklister.sh via a new lowpriv_account named lowpriv_user
+- create cron on lowpriv_user to run this daily, uncomment the unbound include var for it.
+- add filterlists on `your-***-list.txt`
+  
+```
+#!/bin/sh
+
+
+# This script is based on the version of 2020 Slawomir Wojciech Wojtczak (vermaden) found here:
+# https://github.com/vermaden/scripts/blob/master/unbound-blacklist-fetch-huge.sh
+
+# My version is smaller and doesn't need to be ran as root
+# I am not leaking my favourite ad lists, there are plenty good ones
+
+
+# SETTINGS
+TYPE=always_nxdomain
+TEMP="/home/lowpriv_user/unbound_temp"
+ECHO=1
+FILE="/home/lowpriv_user/blacklist.conf"
+TEMP_FILE="/lowpriv_user/temp_blacklist.conf"
+
+# Create temp directory
+[ "${ECHO}" != "0" ] && echo "mkdir: create '${TEMP}' temp dir"
+mkdir -p ${TEMP}
+
+# FETCH add lists you can add multiple you like or use pihole or adguard, but why not make some pre filtering on a low priv user
+
+[ "${ECHO}" != "0" ] && echo "fetch: ${TEMP}/lists-domains"
+curl -s 'https://your-1st-list.txt' \
+     'https://your-snd-list.txt' \
+     'https://your-trd-list.txt' \
+     'https://your-fourth-list.txt' \
+     'https://your-fifth-list.txt/ ' \
+     > "${TEMP}/lists-domains"
+
+
+# GENERATE CONFIG
+[ "${ECHO}" != "0" ] && echo "echo: add '${FILE}' header"
+echo 'server:' > ${FILE}
+
+[ "${ECHO}" != "0" ] && echo "echo: add '${FILE}' rules"
+cat "${TEMP}/lists-domains" \
+  | grep -v '^(.)*#' -E \
+  | grep -v '^#' \
+  | grep -v '^$' \
+  | grep -v '^!' \
+  | awk '{print $1}' \
+  | sed -e s/$'\r'//g \
+        -e 's/^\|\|//' \
+        -e 's/\^$//' \
+        -e 's/^\|//' \
+        -e '/^\/.*\/$/d' \
+        -e '/https?:\/\//d' \
+        -e 's|\.$||g' \
+        -e 's|^\.||g' \
+  | grep -v -e '127.0.0.1' \
+            -e '0.0.0.0' \
+            -e '255.255.255.255' \
+            -e '::' \
+            -e 'localhost' \
+            -e 'localhost.localdomain' \
+            -e 'ip6-localhost' \
+            -e 'ip6-loopback' \
+            -e 'ip6-localnet' \
+            -e 'ip6-mcastprefix' \
+            -e 'ip6-allnodes' \
+            -e 'ip6-allrouters' \
+            -e 'broadcasthost' \
+            -e 'ff02::' \
+  | tr '[:upper:]' '[:lower:]' \
+  | tr -d '\r' \
+  | tr -d '#' \
+  | sort -u \
+  | sed 1,2d \
+  | while read I; do
+      echo "local-zone: \"${I}\" ${TYPE}"
+    done > ${TEMP_FILE} 2>"${TEMP}/debug-errors.txt"
+
+# Remove duplicate entries and ensure file starts with 'server:'
+echo 'server:' > ${FILE}
+sort ${TEMP_FILE} | uniq >> ${FILE}
+rm -f ${TEMP_FILE}
+
+# REMINDER FOR MANUAL ACTION
+[ "${ECHO}" != "0" ] && echo "Reminder: Manually check the unbound configuration with 'unbound-checkconf ${FILE}' and, if valid, restart the unbound service with appropriate permissions."
+
+# CLEAN
+[ "${ECHO}" != "0" ] && echo "rm: remove '${TEMP}' temp dir BUT keep debug files"
+rm -rf ${TEMP}/lists-domains
+
+# UNSET
+unset FILE
+unset TYPE
+unset TEMP
+unset ECHO
+unset UNAME
 ```
 
 #### F.1: greed DNS on another Linux box
@@ -1377,47 +1660,119 @@ request_header_replace   Sec-Fetch-Site "same-site"
 - Save as `~/.local/share/applications/brave-hardened.desktop`:
 
 ```bash
-#!/bin/sh
+#!/usr/bin/env bash
 ############################################################################
-# Brave hardened wrapper · v1.8 (20 May 2025)
-
+#  v3.1
 ############################################################################
 
-# --------- Adjust this to the exit country of your proxy chain ----------
-export TZ=America/New_York 
-
-# --------- Proxy chain ---------------------------------------------------
-P1="10.1.0.1:3128"
-P2="10.0.0.2:3128"
+### -------- Proxy Configuration with Leak Prevention -----------------------
+export TZ=America/New_York
+P1="6.6.6.6:6666"
+P2="7.7.7.7:7777"
+#
+## Force ALL traffic through proxy
 export http_proxy="http://$P1"
 export https_proxy="$http_proxy"
+export ftp_proxy="$http_proxy"
 export ALL_PROXY="$http_proxy"
-
-# ------------------------------------------------------------------------
+export NO_PROXY=""  # Explicitly empty - proxy everything
+#
+## DNS leak prevention
+export RES_OPTIONS="use-vc edns0 single-request single-request-reopen"
+#
+### -------- Launch with Maximum IP Protection ------------------------------
 exec brave \
   --no-first-run \
   --proxy-server="http://$P1;http://$P2" \
+  --proxy-bypass-list="<-loopback>" \
+#  --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE localhost" \
+  --force-webrtc-ip-handling-policy=disable_non_proxied_udp \
+  --webrtc-ip-handling-policy=disable_non_proxied_udp \
+  --disable-webrtc-hw-encoding --disable-webrtc-hw-decoding \
+  --enforce-webrtc-ip-permission-check \
   --disable-quic \
   --dns-prefetch-disable \
   --disable-gpu --disable-gpu-rasterization --disable-accelerated-2d-canvas \
   --disable-3d-apis --disable-webgl --disable-webgpu --disable-webrtc \
   --disable-plugins --disable-plugins-discovery \
-  --window-size=1920,1080 \
-  --force-device-scale-factor=1 \
+  --window-size=1920,1080 --force-device-scale-factor=1 \
   --use-fake-device-for-media-stream \
   --lang=en-US,en;q=0.9 \
-  --enable-features=StrictSiteIsolation,BlockInsecurePrivateNetworkRequests,ResistFingerprintingLetterboxing,V8NoJIT,V8ForceMemoryCage,MiraclePtr,FingerprintingClientRectRandomization \
+  \
+  ## ----------- Enhanced Security Features (v3.1) -------------------------
+  --enable-features=StrictSiteIsolation,SitePerProcess, \
+BlockInsecurePrivateNetworkRequests,ResistFingerprintingLetterboxing, \
+V8NoJIT,V8ForceMemoryCage,MiraclePtr,FingerprintingClientRectRandomization, \
+CrossOriginOpenerPolicyByDefault,CrossOriginEmbedderPolicyCredentialless, \
+AudioServiceOutOfProcess,AudioServiceSandbox,NetworkServiceSandbox, \
+PartitionAllocBackupRefPtr,RendererAppContainer, \
+NetworkServiceMemoryCache,PartitionConnectionsByNetworkIsolationKey, \
+PartitionHttpServerPropertiesByNetworkIsolationKey, \
+PartitionSSLSessionsByNetworkIsolationKey, \
+PartitionNelAndReportingByNetworkIsolationKey, \
+SplitHostCacheByNetworkIsolationKey, \
+StrictOriginIsolation,IsolateSandboxedIframes, \
+DisableProcessReuse,TurnOffStreamingMediaCachingAlways \
+  \
+  ## ----------- Disable Features (Enhanced) -------------------------------
   --disable-site-isolation-trials \
-  --disable-features=AsyncDns,DnsOverHttps,UseDnsHttpsSvcbAlpn,EncryptedClientHello,ZstdContentEncoding,HighEntropyUserAgent,UserAgentClientHint,UserAgentClientHintFullVersionList,ReduceUserAgent,RawClipboard,\
-BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo,WebBluetooth,WebUSB,WebHID,WebSerial,WebNFC,WebGPU,WebRTC,GamepadButtonAxisEvents,ComputePressure,GenericSensor,GenericSensorExtraClasses,DeviceOrientation,DeviceMotionEvent,Accelerometer,Magnetometer,AmbientLightSensor,FontAccess,FontAccessChooser,BackForwardCache,UseWebP,DirectSockets,IdleDetection,FileSystemAccess,DigitalGoodsApi,SubresourceWebBundles,PrivateStateTokens,TrustTokens,WebXR,WebXRARModule,WebXRHandInput,WebCodecs,Portals,PaymentRequest,PaymentHandler,SecurePaymentConfirmation,SerialAPI,KeyboardLockAPI,ScreenWakeLock,WebShare,WebShareV2,WindowPlacement,ScreenDetailedInformation,LocalFontsAccess,BackgroundFetch,BackgroundSync,WebOTP,ContactPickerAPI,SpeechRecognition,WebSpeechSynthesisAPI,PdfOcr,OptimizationGuideHintDownloading,Prerender2,AudioServiceOutOfProcess,WebAudio \
- --enable-features=CrossOriginOpenerPolicyByDefault,CrossOriginEmbedderPolicyCredentialless \
-  --disable-blink-features=MathMLCore,ClipboardCustomFormats,ClipboardUnsanitizedContent,AutomationControlled,ClipboardChangeEvent,ClipboardContentsId,ClipboardSvg,ClipboardItemWithDOMStringSupport,ClipboardEventTargetCanBeFocusedElement,IdleDetection,WebAudio \
+  --disable-features=AsyncDns,DnsOverHttps,UseDnsHttpsSvcbAlpn,EncryptedClientHello, \
+ZstdContentEncoding,HighEntropyUserAgent,UserAgentClientHint,UserAgentClientHintFullVersionList, \
+ReduceUserAgent,RawClipboard,BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo, \
+WebBluetooth,WebUSB,WebHID,WebSerial,WebNFC,WebGPU,WebRTC,GamepadButtonAxisEvents, \
+ComputePressure,GenericSensor,DeviceOrientation,DeviceMotionEvent,Accelerometer,Magnetometer, \
+AmbientLightSensor,FontAccess,FontAccessChooser,BackForwardCache,UseWebP,DirectSockets,IdleDetection, \
+FileSystemAccess,DigitalGoodsApi,SubresourceWebBundles,PrivateStateTokens,TrustTokens, \
+WebXR,WebXRARModule,WebXRHandInput,WebCodecs,Portals,PaymentRequest,PaymentHandler, \
+SecurePaymentConfirmation,SerialAPI,KeyboardLockAPI,ScreenWakeLock,WebShare,WebShareV2, \
+WindowPlacement,ScreenDetailedInformation,LocalFontsAccess,BackgroundFetch,BackgroundSync,WebOTP, \
+ContactPickerAPI,SpeechRecognition,WebSpeechSynthesisAPI,PdfOcr,Prerender2,OptimizationGuideHintDownloading, \
+MediaRouter,DialMediaRouteProvider,CastMediaRouteProvider, \
+WebRtcHideLocalIpsWithMdns,WebRtcLocalIpsAllowedUrls, \
+PrivacySandboxAdsAPIsOverride,Topics,ProtectedAudienceAPI,AttributionReporting, \
+AttributionReportingCrossAppWeb,SharedStorageAPI,Fledge,PrivateAggregationAPI, \
+FedCM,FencedFrames,StorageAccessAPI,FirstPartySets,CookieDeprecationFacilitatedTesting, \
+ConversionMeasurement,RelatedWebsiteSets, \
+WasmJspi,WebAssemblyGarbageCollection,WasmTiering \
+  \
+  ## ----------- Blink Features Disabled -----------------------------------
+  --disable-blink-features=MathMLCore,ClipboardCustomFormats,ClipboardUnsanitizedContent, \
+AutomationControlled,ClipboardChangeEvent,ClipboardContentsId,ClipboardSvg, \
+ClipboardItemWithDOMStringSupport,ClipboardEventTargetCanBeFocusedElement,IdleDetection,WebAudio, \
+ClientHintsDPR,ClientHintsDeviceMemory,ClientHintsMetaHTTPEquivAcceptCH, \
+ClientHintsMetaNameAcceptCH,ClientHintsResourceWidth,ClientHintsViewportWidth \
+  \
+  ## ----------- Additional Hardening --------------------------------------
   --disable-reading-from-canvas \
   --mask-webgl-vendor-and-renderer \
-  --blink-settings=hardwareConcurrency=8,deviceMemory=4,timezone=$(cat /etc/timezone 2>/dev/null || echo ${TZ}),audioContextSampleRate=48000,disablePlugins=true \
+  --disable-client-side-phishing-detection \
+  --disable-component-update \
+  --disable-background-networking \
+  --disable-sync \
+  --disable-default-apps \
+  --disable-domain-reliability \
+  --no-pings \
+  --no-crash-upload \
+  --disable-breakpad \
+  --disable-cloud-import \
+  --disable-gesture-typing \
+  --disable-offer-store-unmasked-wallet-cards \
+  --disable-offer-upload-credit-cards \
+  --disable-print-preview \
+  --disable-voice-input \
+  --disable-wake-on-wifi \
+  --disable-cloud-policy-on-signin \
+  --disable-signin-promo \
+  --disable-translate \
+  --disable-features=Translate \
+  --blink-settings=hardwareConcurrency=8,deviceMemory=4, \
+timezone=$(cat /etc/timezone 2>/dev/null || echo ${TZ}),audioContextSampleRate=48000,disablePlugins=true \
   --deny-permission-prompts --no-referrers \
-  --js-flags="--jitless --liftoff --no-expose-wasm --no-wasm-tier-up" \
+  --js-flags="--jitless --liftoff --no-expose-wasm --no-wasm-tier-up --no-validate-asm" \
   --ignore-certificate-errors \
+  --enable-strict-mixed-content-checking \
+  --block-new-web-contents \
+  --disable-ipc-flooding-protection \
   "$@"
 
 ```
