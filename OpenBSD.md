@@ -1680,71 +1680,50 @@ export NO_PROXY=""  # Explicitly empty - proxy everything
 ## DNS leak prevention
 export RES_OPTIONS="use-vc edns0 single-request single-request-reopen"
 #
-### -------- Launch with Maximum IP Protection ------------------------------
 exec brave \
   --no-first-run \
   --proxy-server="http://$P1;http://$P2" \
   --proxy-bypass-list="<-loopback>" \
-#  --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE localhost" \
   --force-webrtc-ip-handling-policy=disable_non_proxied_udp \
   --webrtc-ip-handling-policy=disable_non_proxied_udp \
-  --disable-webrtc-hw-encoding --disable-webrtc-hw-decoding \
+  --disable-webrtc-hw-encoding \
+  --disable-webrtc-hw-decoding \
   --enforce-webrtc-ip-permission-check \
   --disable-quic \
   --dns-prefetch-disable \
-  --disable-gpu --disable-gpu-rasterization --disable-accelerated-2d-canvas \
-  --disable-3d-apis --disable-webgl --disable-webgpu --disable-webrtc \
-  --disable-plugins --disable-plugins-discovery \
-  --window-size=1920,1080 --force-device-scale-factor=1 \
+  --disable-gpu \
+  --disable-gpu-compositing \
+  --disable-gpu-rasterization \
+  --disable-accelerated-2d-canvas \
+  --disable-accelerated-video-decode \
+  --disable-accelerated-mjpeg-decode \
+  --disable-accelerated-video-encode \
+  --use-gl=swiftshader \
+  --disable-3d-apis \
+  --disable-webgl \
+  --disable-webgl2 \
+  --disable-webgpu \
+  --disable-webrtc \
+  --disable-plugins \
+  --disable-plugins-discovery \
+  --disable-pepper-3d \
+  --window-size=1920,1080 \
+  --force-device-scale-factor=1 \
   --use-fake-device-for-media-stream \
   --lang=en-US,en;q=0.9 \
-  \
-  ## ----------- Enhanced Security Features (v3.1) -------------------------
-  --enable-features=StrictSiteIsolation,SitePerProcess, \
-BlockInsecurePrivateNetworkRequests,ResistFingerprintingLetterboxing, \
-V8NoJIT,V8ForceMemoryCage,MiraclePtr,FingerprintingClientRectRandomization, \
-CrossOriginOpenerPolicyByDefault,CrossOriginEmbedderPolicyCredentialless, \
-AudioServiceOutOfProcess,AudioServiceSandbox,NetworkServiceSandbox, \
-PartitionAllocBackupRefPtr,RendererAppContainer, \
-NetworkServiceMemoryCache,PartitionConnectionsByNetworkIsolationKey, \
-PartitionHttpServerPropertiesByNetworkIsolationKey, \
-PartitionSSLSessionsByNetworkIsolationKey, \
-PartitionNelAndReportingByNetworkIsolationKey, \
-SplitHostCacheByNetworkIsolationKey, \
-StrictOriginIsolation,IsolateSandboxedIframes, \
-DisableProcessReuse,TurnOffStreamingMediaCachingAlways \
-  \
-  ## ----------- Disable Features (Enhanced) -------------------------------
+  --accept-lang=en-US,en;q=0.9 \
+  --override-metrics-reporting-enabled \
+  --force-fieldtrials="FingerprintingProtection/Enabled/" \
+  --fingerprinting-canvas-image-data-noise \
+  --fingerprinting-canvas-measuretext-noise \
+  --fingerprinting-client-rects-noise \
+  --enable-features=StrictSiteIsolation,SitePerProcess,OriginIsolationHeader,ProcessPerSiteUpToMainFrameThreshold,BackForwardCacheMemoryControls,ReduceTimerPrecision,ClampTimeResolution,JitterUniformWebExposedApis,BlockInsecurePrivateNetworkRequests,ResistFingerprintingLetterboxing,V8NoJIT,V8ForceMemoryCage,MiraclePtr,FingerprintingClientRectRandomization,FingerprintingScreenSize,FingerprintingCanvasImageData,FingerprintingCanvasMeasureTextNoise,CrossOriginOpenerPolicyByDefault,CrossOriginEmbedderPolicyCredentialless,AudioServiceOutOfProcess,AudioServiceSandbox,NetworkServiceSandbox,PartitionAllocBackupRefPtr,RendererAppContainer,NetworkServiceMemoryCache,PartitionConnectionsByNetworkIsolationKey,PartitionHttpServerPropertiesByNetworkIsolationKey,PartitionSSLSessionsByNetworkIsolationKey,PartitionNelAndReportingByNetworkIsolationKey,SplitHostCacheByNetworkIsolationKey,StrictOriginIsolation,IsolateSandboxedIframes,DisableProcessReuse,TurnOffStreamingMediaCachingAlways,ForceReduceMotion,PrefersColorSchemeClientHintHeader,PartitionVisitedLinks,PartitionedCookies,ThirdPartyStoragePartitioning,SplitCacheByNetworkIsolationKey,HttpCacheKeyingExperiment,PartitionDiskCache,PartitionIndexedDB,PartitionBlobCache,PartitionCodeCache,PartitionedBlobUrlStore,PartitionAllocGigaCage,PartitionAllocMemoryTagging,BackupRefPtrNoEntryDeletion,IsolateOrigins,IsolatePrerenders,DocumentIsolationPolicy,StorageServicePartitioning,PartitionExpectCTState,PartitionDomainReliabilityByNetworkIsolationKey,SameSiteDefaultChecksMethodRigorously,BlockInsecureDownloads,MixedContentAutoupgrade,PartitionedPopins,ReduceUserAgentMinorVersion,SpoofedTimezone,FingerprintingProtection,PartitionedServiceWorkerScript \
   --disable-site-isolation-trials \
-  --disable-features=AsyncDns,DnsOverHttps,UseDnsHttpsSvcbAlpn,EncryptedClientHello, \
-ZstdContentEncoding,HighEntropyUserAgent,UserAgentClientHint,UserAgentClientHintFullVersionList, \
-ReduceUserAgent,RawClipboard,BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo, \
-WebBluetooth,WebUSB,WebHID,WebSerial,WebNFC,WebGPU,WebRTC,GamepadButtonAxisEvents, \
-ComputePressure,GenericSensor,DeviceOrientation,DeviceMotionEvent,Accelerometer,Magnetometer, \
-AmbientLightSensor,FontAccess,FontAccessChooser,BackForwardCache,UseWebP,DirectSockets,IdleDetection, \
-FileSystemAccess,DigitalGoodsApi,SubresourceWebBundles,PrivateStateTokens,TrustTokens, \
-WebXR,WebXRARModule,WebXRHandInput,WebCodecs,Portals,PaymentRequest,PaymentHandler, \
-SecurePaymentConfirmation,SerialAPI,KeyboardLockAPI,ScreenWakeLock,WebShare,WebShareV2, \
-WindowPlacement,ScreenDetailedInformation,LocalFontsAccess,BackgroundFetch,BackgroundSync,WebOTP, \
-ContactPickerAPI,SpeechRecognition,WebSpeechSynthesisAPI,PdfOcr,Prerender2,OptimizationGuideHintDownloading, \
-MediaRouter,DialMediaRouteProvider,CastMediaRouteProvider, \
-WebRtcHideLocalIpsWithMdns,WebRtcLocalIpsAllowedUrls, \
-PrivacySandboxAdsAPIsOverride,Topics,ProtectedAudienceAPI,AttributionReporting, \
-AttributionReportingCrossAppWeb,SharedStorageAPI,Fledge,PrivateAggregationAPI, \
-FedCM,FencedFrames,StorageAccessAPI,FirstPartySets,CookieDeprecationFacilitatedTesting, \
-ConversionMeasurement,RelatedWebsiteSets, \
-WasmJspi,WebAssemblyGarbageCollection,WasmTiering \
-  \
-  ## ----------- Blink Features Disabled -----------------------------------
-  --disable-blink-features=MathMLCore,ClipboardCustomFormats,ClipboardUnsanitizedContent, \
-AutomationControlled,ClipboardChangeEvent,ClipboardContentsId,ClipboardSvg, \
-ClipboardItemWithDOMStringSupport,ClipboardEventTargetCanBeFocusedElement,IdleDetection,WebAudio, \
-ClientHintsDPR,ClientHintsDeviceMemory,ClientHintsMetaHTTPEquivAcceptCH, \
-ClientHintsMetaNameAcceptCH,ClientHintsResourceWidth,ClientHintsViewportWidth \
-  \
-  ## ----------- Additional Hardening --------------------------------------
+  --disable-features=gpu-compositing,accelerated-video-decode,MediaSession,webgl2,AsyncDns,DnsOverHttps,UseDnsHttpsSvcbAlpn,EncryptedClientHello,ZstdContentEncoding,HighEntropyUserAgent,UserAgentClientHint,UserAgentClientHintFullVersionList,ReduceUserAgent,RawClipboard,BatteryStatus,BatteryStatusAPI,PreciseMemoryInfo,WebBluetooth,WebUSB,WebHID,WebSerial,WebNFC,WebGPU,WebRTC,GamepadButtonAxisEvents,ComputePressure,GenericSensor,DeviceOrientation,DeviceMotionEvent,Accelerometer,Magnetometer,Gyroscope,AmbientLightSensor,ProximitySensor,FontAccess,FontAccessChooser,BackForwardCache,UseWebP,DirectSockets,IdleDetection,FileSystemAccess,DigitalGoodsApi,SubresourceWebBundles,PrivateStateTokens,TrustTokens,WebXR,WebXRARModule,WebXRHandInput,WebCodecs,Portals,PaymentRequest,PaymentHandler,SecurePaymentConfirmation,SerialAPI,KeyboardLockAPI,KeyboardMap,ScreenWakeLock,WebShare,WebShareV2,WindowPlacement,ScreenDetailedInformation,ScreenEnumeration,LocalFontsAccess,BackgroundFetch,BackgroundSync,WebOTP,ContactPickerAPI,SpeechRecognition,WebSpeechSynthesisAPI,PdfOcr,Prerender2,OptimizationGuideHintDownloading,MediaRouter,DialMediaRouteProvider,CastMediaRouteProvider,WebRtcHideLocalIpsWithMdns,WebRtcLocalIpsAllowedUrls,PrivacySandboxAdsAPIsOverride,Topics,ProtectedAudienceAPI,AttributionReporting,AttributionReportingCrossAppWeb,SharedStorageAPI,Fledge,PrivateAggregationAPI,FedCM,FencedFrames,StorageAccessAPI,FirstPartySets,CookieDeprecationFacilitatedTesting,ConversionMeasurement,RelatedWebsiteSets,WasmJspi,WebAssemblyGarbageCollection,WasmTiering,Translate,MediaStreamRecording,MediaRecorder,MediaCapabilities,EnumerateDevices,AudioContext,DocumentDomain,LegacyWindowsDWriteFontFallback,NavigatorHardwareConcurrency \
+  --disable-blink-features=MathMLCore,ClipboardCustomFormats,ClipboardUnsanitizedContent,AutomationControlled,ClipboardChangeEvent,ClipboardContentsId,ClipboardSvg,ClipboardItemWithDOMStringSupport,ClipboardEventTargetCanBeFocusedElement,IdleDetection,WebAudio,ClientHintsDPR,ClientHintsDeviceMemory,ClientHintsMetaHTTPEquivAcceptCH,ClientHintsMetaNameAcceptCH,ClientHintsResourceWidth,ClientHintsViewportWidth,NavigatorPlugins,NavigatorMimeTypes,WebGL,WebGL2,WebGLDraftExtensions,Canvas,CanvasText,OffscreenCanvas,OffscreenCanvasText,Canvas2D,CanvasFilters,HTMLCanvasElement,PerformanceNavigationTiming,V8IdleTasks,HighResolutionTimeStamps,LongTaskObserver,NavigatorHardwareConcurrency,NavigatorDeviceMemory \
   --disable-reading-from-canvas \
   --mask-webgl-vendor-and-renderer \
+  --disable-webgl-image-chromium \
   --disable-client-side-phishing-detection \
   --disable-component-update \
   --disable-background-networking \
@@ -1764,15 +1743,17 @@ ClientHintsMetaNameAcceptCH,ClientHintsResourceWidth,ClientHintsViewportWidth \
   --disable-cloud-policy-on-signin \
   --disable-signin-promo \
   --disable-translate \
-  --disable-features=Translate \
-  --blink-settings=hardwareConcurrency=8,deviceMemory=4, \
-timezone=$(cat /etc/timezone 2>/dev/null || echo ${TZ}),audioContextSampleRate=48000,disablePlugins=true \
-  --deny-permission-prompts --no-referrers \
-  --js-flags="--jitless --liftoff --no-expose-wasm --no-wasm-tier-up --no-validate-asm" \
-  --ignore-certificate-errors \
+  --disable-media-stream \
+  --disable-speech-api \
+  --disable-device-discovery-notifications \
+  --blink-settings="hardwareConcurrency=8,deviceMemory=8,maxTouchPoints=0,timezone=America/New_York,audioContextSampleRate=48000,audioContextBaseLatency=0.01,disablePlugins=true,disableReadingFromCanvas=true,strictMixedContentChecking=true,strictPowerfulFeatureRestrictions=true" \
+  --deny-permission-prompts \
+  --no-referrers \
+  --js-flags="--jitless --liftoff --no-expose-wasm --no-wasm-tier-up --no-validate-asm --max-old-space-size=2048 --random-seed=42" \
   --enable-strict-mixed-content-checking \
   --block-new-web-contents \
   --disable-ipc-flooding-protection \
+  --disable-notifications \
   "$@"
 
 ```
