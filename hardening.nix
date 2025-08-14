@@ -113,6 +113,9 @@ in
     "lsm=landlock,lockdown,yama,apparmor"
   ];
 
+# 2.5 Kernel modules cannot be loaded, removed, or modified after boot
+  security.lockKernelModules = true;
+
   ###########################################################################
   # 3.  Disable unprivileged user namespaces globally
   ###########################################################################
