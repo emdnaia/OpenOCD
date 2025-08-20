@@ -183,6 +183,7 @@ in
   ###########################################################################
   # 7.  todo: Secure Boot / TPM2 (optional, requires manual key enrolment) 
   # lurk here: https://wiki.cachyos.org/configuration/secure_boot_setup/
+  # faster via: https://github.com/nix-community/lanzaboote/releases
   ###########################################################################
   # boot.loader.systemd-boot.enable     = true;
   # boot.loader.systemd-boot.secureBoot = true;  # enrol with `sbctl`
