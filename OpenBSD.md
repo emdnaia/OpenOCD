@@ -149,7 +149,7 @@ post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 518
 */4 * * * * /bin/sh /usr/local/asn_allow.sh 
 */4 * * * * /bin/sh /usr/local/phone-ip-check.sh
 ```
-#### B.2.1 Country blocker
+#### (Optional) B.2.1 Country blocker
 - block every country except your server one || you could also modify the script to allow your countries only, or allow access in a certain order of countries
 - version1 : save at `/usr/local/country-blocker.sh` , make a cronjob like on top of the documentation
 - version2 : run as lowpriv user elsewhere, like examples below
@@ -407,7 +407,7 @@ set limit table-entries 500000
 #block quick from <abusive_ips>
 
 #block all countries except server country
-table <blocked_countries> persist file "/etc/pf/blocked-countries.zone"
+#table <blocked_countries> persist file "/etc/pf/blocked-countries.zone"
 
 ###  could be doing redirection like:
 #pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
@@ -424,8 +424,8 @@ wireguard_iface="wg0"                       # WireGuard interface identifier
 block drop quick inet6
 
 # Block all countries except the one from the server itself
-block drop quick from <blocked_countries>
-block drop quick to <blocked_countries>
+#block drop quick from <blocked_countries>
+#block drop quick to <blocked_countries>
 
 # we go block-drop
 set block-policy drop
@@ -502,15 +502,15 @@ ssh_allowed_ips="{1.1.1.1/32, 8.8.8.8/32, 10.0.1.1/32, 10.0.1.34/32}"
 
 table <dynamic_hosts> persist file "/usr/local/gotten-para"
 table <asn>            persist file "/usr/local/asn_list.txt"
-table <blocked_countries> persist file "/etc/pf/blocked-countries.zone"
+#table <blocked_countries> persist file "/etc/pf/blocked-countries.zone"
 
 
 block drop quick inet6
 
 
 # Block all countries except the one from the server itself
-block drop quick from <blocked_countries>
-block drop quick to <blocked_countries>
+#block drop quick from <blocked_countries>
+#block drop quick to <blocked_countries>
 
 
 set block-policy drop
