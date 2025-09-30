@@ -149,8 +149,90 @@ post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 518
 */4 * * * * /bin/sh /usr/local/asn_allow.sh 
 */4 * * * * /bin/sh /usr/local/phone-ip-check.sh
 ```
+#### B.2.1 Country blocker
+- block every country except your server one, enable or disable at will by uncommenting
+- version1 : save at /etc/pf/blocked-countries.zone
+- version2 : run as lowpriv user
+```
+#!/bin/sh
 
-#### B.2. ASN Allow Script
+ZONE_DIR="/etc/pf/zones"
+COMBINED_FILE="/etc/pf/blocked-countries.zone"
+LOG="/var/log/country-update.log"
+LOCK_FILE="/var/run/country-update.lock"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG"
+}
+
+# Lock handling
+if [ -f "$LOCK_FILE" ]; then
+    log "Another instance running, exiting"
+    exit 1
+fi
+trap 'rm -f "$LOCK_FILE"' EXIT
+touch "$LOCK_FILE"
+
+log "=== Starting country blocklist update ==="
+
+# Get server's public IP
+SERVER_IP=$(curl -s -m 10 https://api.ipify.org)
+if [ -z "$SERVER_IP" ]; then
+    log "ERROR: Could not determine server IP"
+    exit 1
+fi
+log "Server IP: $SERVER_IP"
+
+# Determine server's country code
+SERVER_COUNTRY=$(curl -s -m 10 "https://ipinfo.io/$SERVER_IP/country" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+if [ -z "$SERVER_COUNTRY" ]; then
+    log "WARNING: Could not determine country, proceeding without exclusion"
+    SERVER_COUNTRY="xx"
+fi
+log "Server country: $SERVER_COUNTRY (will be excluded)"
+
+# Create zone directory
+mkdir -p "$ZONE_DIR"
+
+# Download all country zones except server's country
+DOWNLOADED=0
+curl -s https://www.ipdeny.com/ipblocks/data/aggregated/ | \
+    grep -o 'href="[a-z][a-z]-aggregated.zone"' | \
+    sed 's/href="//;s/"//' | \
+    while read zone; do
+        COUNTRY_CODE=$(echo "$zone" | cut -d'-' -f1)
+        
+        if [ "$COUNTRY_CODE" = "$SERVER_COUNTRY" ]; then
+            log "SKIP: $zone (server's country)"
+            rm -f "$ZONE_DIR/$zone"
+        else
+            curl -s "https://www.ipdeny.com/ipblocks/data/aggregated/$zone" > "$ZONE_DIR/$zone"
+            DOWNLOADED=$((DOWNLOADED + 1))
+        fi
+    done
+
+log "Downloaded: $DOWNLOADED zones"
+
+# Combine all zones into single file
+cat "$ZONE_DIR"/*-aggregated.zone 2>/dev/null | sort -u > "$COMBINED_FILE.tmp"
+
+# Validate
+LINE_COUNT=$(wc -l < "$COMBINED_FILE.tmp" | tr -d ' ')
+if [ "$LINE_COUNT" -lt 10000 ]; then
+    log "ERROR: Combined file too small ($LINE_COUNT lines)"
+    rm -f "$COMBINED_FILE.tmp"
+    exit 1
+fi
+
+mv "$COMBINED_FILE.tmp" "$COMBINED_FILE"
+chmod 644 "$COMBINED_FILE"
+
+log "Combined file: $LINE_COUNT CIDR blocks"
+log "=== Update completed ==="
+```
+
+
+#### B.2.2 ASN Allow Script
 - This script checks and updates ASN information for dynamic IPs
 - Save as `/usr/local/asn_allow.sh`
 ```sh
@@ -316,10 +398,16 @@ fi
 #
 # See pf.conf(5) and /etc/examples/pf.conf
 
+# Increase table size limit for country blocking
+set limit table-entries 500000
+
 #-----  examples start #----- 
 #ban evil like:
 #table <abusive_ips> persist
 #block quick from <abusive_ips>
+
+#block all countries except server country
+table <blocked_countries> persist file "/etc/pf/blocked-countries.zone"
 
 ###  could be doing redirection like:
 #pass in log on vio0 proto {tcp,udp} from <dynamic_hosts> to (vio0) port 443 rdr-to 127.0.0.1 port 8080 keep state
@@ -334,6 +422,10 @@ wireguard_iface="wg0"                       # WireGuard interface identifier
 # ===== Basic Security Settings =====
 # Block all IPv6 traffic for security
 block drop quick inet6
+
+# Block all countries except the one from the server itself
+block drop quick from <blocked_countries>
+block drop quick to <blocked_countries>
 
 # we go block-drop
 set block-policy drop
@@ -399,6 +491,10 @@ pass out on vio0 keep state
 ```
 # $OpenBSD: pf.conf,v 1.55 2017/12/03
 
+# Increase table size limit for country blocking
+set limit table-entries 500000
+
+
 wireguard_port="{51820}"
 wireguard_net="10.0.0.0/24"
 
@@ -406,8 +502,16 @@ ssh_allowed_ips="{1.1.1.1/32, 8.8.8.8/32, 10.0.1.1/32, 10.0.1.34/32}"
 
 table <dynamic_hosts> persist file "/usr/local/gotten-para"
 table <asn>            persist file "/usr/local/asn_list.txt"
+table <blocked_countries> persist file "/etc/pf/blocked-countries.zone"
+
 
 block drop quick inet6
+
+
+# Block all countries except the one from the server itself
+block drop quick from <blocked_countries>
+block drop quick to <blocked_countries>
+
 
 set block-policy drop
 
