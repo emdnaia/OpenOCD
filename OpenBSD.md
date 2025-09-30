@@ -150,9 +150,9 @@ post-down iptables -t nat -D PREROUTING -i $real_adapter_name -p udp --dport 518
 */4 * * * * /bin/sh /usr/local/phone-ip-check.sh
 ```
 #### B.2.1 Country blocker
-- block every country except your server one, enable or disable at will by uncommenting
-- version1 : save at /etc/pf/blocked-countries.zone
-- version2 : run as lowpriv user
+- block every country except your server one || you could also modify the script to allow your countries only, or allow access in a certain order of countries
+- version1 : save at `/usr/local/country-blocker.sh` , make a cronjob like on top of the documentation
+- version2 : run as lowpriv user elsewhere, like examples below
 ```
 #!/bin/sh
 
