@@ -1,0 +1,46 @@
+#include <tunables/global>
+
+profile brave-renderer /nix/store/*-brave-*/opt/brave.com/brave/brave {
+  #include <abstractions/base>
+  #include <abstractions/fonts>
+  
+  # Network
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  
+  # Brave binary
+  /nix/store/*-brave-*/opt/brave.com/brave/brave rix,
+  /nix/store/*-brave-*/opt/brave.com/brave/*.so* rm,
+  
+  # Libraries
+  /nix/store/*-glibc-*/lib/*.so* rm,
+  /nix/store/*-gcc-*/lib/*.so* rm,
+  /nix/store/** r,
+  
+  # Minimal proc
+  /proc/sys/kernel/random/uuid r,
+  /proc/*/cmdline r,
+  /proc/*/stat r,
+  /proc/*/statm r,
+  /proc/*/status r,
+  /proc/*/maps r,
+  
+  # Cache
+  owner /home/*/.cache/BraveSoftware/** rw,
+  owner /home/*/.config/BraveSoftware/** rw,
+  
+  # Temp
+  owner /tmp/** rw,
+  owner /dev/shm/** rw,
+  
+  # GPU
+  /dev/dri/** rw,
+  /sys/devices/pci*/drm/** r,
+  
+  # Denials
+  deny /home/*/.ssh/** rw,
+  deny /home/*/.gnupg/** rw,
+  deny /boot/** rw,
+}
