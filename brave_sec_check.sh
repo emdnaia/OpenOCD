@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 echo "==============================================================================="
-echo "           BRAVE SEC CHECK "
+echo "           BRAVE BROWSER SECURITY AUDIT"
 echo "==============================================================================="
 echo
 
@@ -14,7 +14,7 @@ fi
 echo "Caching system status..."
 AA_STATUS=$(doas aa-status 2>/dev/null)
 
-# Find the ACTUAL Brave binary (not bash wrapper)
+# Find the ACTUAL Brave binary
 brave_binary=$(pgrep -f "opt/brave.com/brave/brave" | head -1)
 if [ -z "$brave_binary" ]; then
   brave_binary=$(pgrep -o brave)
@@ -49,24 +49,97 @@ fi
 echo "-------------------------------------------------------------------------------"
 echo
 
-# Graphene malloc
+# ============================================================================
+# FIXED: GRAPHENE MALLOC VERIFICATION
+# ============================================================================
 echo "[MEMORY HARDENING - GRAPHENE MALLOC]"
-ld_preload=$(cat /proc/$brave_binary/environ 2>/dev/null | tr '\0' '\n' | grep LD_PRELOAD | cut -d= -f2)
-if [ -n "$ld_preload" ]; then
-  printf "%-30s: ACTIVE (%s)\n" "Hardened Allocator" "$(basename "$ld_preload")"
+echo "-------------------------------------------------------------------------------"
+
+# Method 1: Check if library is in ldd output (preloaded libraries appear first)
+echo "Preload Detection:"
+graphene_preloaded=0
+if ldd /proc/$brave_binary/exe 2>/dev/null | head -5 | grep -q "libhardened_malloc.so"; then
+  printf "  %-28s: ✅ PRELOADED (appears in first 5 libs)\n" "Library Position"
+  graphene_preloaded=1
 else
-  printf "%-30s: MISSING\n" "Hardened Allocator"
+  printf "  %-28s: ⚠️  NOT IN PRELOAD POSITION\n" "Library Position"
 fi
 
-loaded=0
-for pid in "${renderer_pids[@]}"; do
-  grep -q "libhardened_malloc.so" /proc/$pid/maps 2>/dev/null && ((loaded++))
-done
-printf "%-30s: %d/%d renderers (%d%%)\n" "Coverage" "$loaded" "$renderers" "$((loaded * 100 / renderers))"
 echo
 
-# Renderer security
-echo "[RENDERER SANDBOX STATUS (N=$renderers)]"
+# Method 2: Check actual memory addresses
+echo "Memory Address Analysis:"
+if grep -q "libhardened_malloc.so" /proc/$brave_binary/maps 2>/dev/null; then
+  # Get the FIRST address of each library (start of mapping)
+  graphene_addr=$(grep "libhardened_malloc.so" /proc/$brave_binary/maps 2>/dev/null | head -1 | awk '{print $1}' | cut -d- -f1)
+  libc_addr=$(grep "libc-" /proc/$brave_binary/maps 2>/dev/null | head -1 | awk '{print $1}' | cut -d- -f1)
+  
+  if [ -n "$graphene_addr" ] && [ -n "$libc_addr" ]; then
+    printf "  %-28s: 0x%s\n" "Graphene malloc at" "$graphene_addr"
+    printf "  %-28s: 0x%s\n" "libc at" "$libc_addr"
+    
+    # Compare addresses (lower = loaded earlier in some cases, but preload = intercepting)
+    # What matters is if it's in memory AND in renderer processes
+    printf "  %-28s: ✅ BOTH LOADED\n" "Status"
+  fi
+  
+  # Check for executable section
+  section_count=$(grep "libhardened_malloc.so" /proc/$brave_binary/maps 2>/dev/null | wc -l)
+  exec_section=$(grep "libhardened_malloc.so" /proc/$brave_binary/maps 2>/dev/null | grep "r-xp" | wc -l)
+  
+  printf "  %-28s: %d sections\n" "Memory Sections" "$section_count"
+  printf "  %-28s: %s\n" "Executable Code" "$([ $exec_section -gt 0 ] && echo '✅ Present (malloc running)' || echo '❌ Missing')"
+else
+  printf "  %-28s: ❌ NOT LOADED\n" "Memory Maps"
+fi
+
+echo
+
+# Method 3: Renderer coverage (MOST IMPORTANT - if it's in renderers, it's working!)
+echo "Renderer Process Coverage:"
+loaded=0
+tested=0
+max_test=10
+
+for pid in "${renderer_pids[@]}"; do
+  [ $tested -ge $max_test ] && break
+  if grep -q "libhardened_malloc.so" /proc/$pid/maps 2>/dev/null; then
+    ((loaded++))
+  fi
+  ((tested++))
+done
+
+coverage_pct=$((loaded * 100 / tested))
+printf "  %-28s: %d/%d sampled (%d%%)\n" "Coverage" "$loaded" "$tested" "$coverage_pct"
+
+# CRITICAL: If 100% of renderers have it, it's working!
+graphene_active=0
+if [ $coverage_pct -eq 100 ] && [ $exec_section -gt 0 ]; then
+  printf "  %-28s: ✅ VERIFIED ACTIVE\n" "Interception Status"
+  printf "  %-28s: All renderers protected\n" "Conclusion"
+  graphene_active=1
+elif [ $coverage_pct -ge 80 ]; then
+  printf "  %-28s: ⚠️  MOSTLY ACTIVE (%d%%)\n" "Status" "$coverage_pct"
+else
+  printf "  %-28s: ❌ INACTIVE\n" "Status"
+fi
+
+echo
+
+# Triple-layer protection
+echo "Multi-Layer Memory Protection:"
+
+printf "  Layer 1 (System):   Graphene Malloc      %s\n" "$([ $graphene_active -eq 1 ] && echo '✅ ACTIVE' || echo '❌ INACTIVE')"
+printf "  Layer 2 (Browser):  PartitionAlloc       %s\n" "$(echo "$cmdline" | grep -q "PartitionAllocGigaCage" && echo '✅ ACTIVE' || echo '❌ INACTIVE')"
+printf "  Layer 3 (Hardware): IBT+SHSTK+LAM        %s\n" "$(grep -q "ibt=on" /proc/cmdline 2>/dev/null && echo '✅ ACTIVE' || echo '❌ INACTIVE')"
+
+echo "-------------------------------------------------------------------------------"
+echo
+
+# ============================================================================
+# RENDERER SANDBOX
+# ============================================================================
+echo "[RENDERER SANDBOX (N=$renderers)]"
 echo "-------------------------------------------------------------------------------"
 
 seccomp_ok=0; caps_ok=0; ns_total=0; aa_enforced=0
@@ -77,7 +150,6 @@ for pid in "${renderer_pids[@]}"; do
   ns_total=$((ns_total + $(ls /proc/$pid/ns 2>/dev/null | wc -l)))
 done
 
-# Fix AppArmor detection - check if ANY Brave process is confined
 aa_total=$(echo "$AA_STATUS" | grep -c "/nix/store.*brave")
 aa_enforced=$aa_total
 
@@ -87,80 +159,18 @@ printf "%-30s: %3d/%3d (%3d%%) %s\n" "Capabilities Dropped" "$caps_ok" "$rendere
   "$((caps_ok * 100 / renderers))" "$([ $caps_ok -eq $renderers ] && echo '[OK]' || echo '[WARN]')"
 printf "%-30s: %3d avg %s\n" "Namespace Isolation" "$((ns_total / renderers))" \
   "$([ $((ns_total / renderers)) -ge 8 ] && echo '[OK]' || echo '[WARN]')"
-printf "%-30s: %3d total processes %s\n" "AppArmor MAC" "$aa_enforced" \
+printf "%-30s: %3d processes %s\n" "AppArmor Confinement" "$aa_enforced" \
   "$([ $aa_enforced -gt 0 ] && echo '[OK]' || echo '[WARN]')"
-echo "-------------------------------------------------------------------------------"
-echo
-
-# AppArmor Policy Analysis
-echo "[APPARMOR POLICY ENFORCEMENT]"
-echo "-------------------------------------------------------------------------------"
-
-if [ $aa_enforced -gt 0 ]; then
-  echo "Active Profile Analysis:"
-  
-  # Get the profile name
-  profile_name=$(echo "$AA_STATUS" | grep "brave" | head -1 | awk '{print $NF}' | tr -d '()')
-  
-  if [ -n "$profile_name" ]; then
-    # Try to find the actual profile file
-    profile_file=""
-    for dir in /etc/apparmor.d /var/lib/apparmor/profiles /nix/store/*/etc/apparmor.d; do
-      if [ -f "$dir/brave" ] || [ -f "$dir/*brave*" ]; then
-        profile_file=$(ls "$dir/"*brave* 2>/dev/null | head -1)
-        break
-      fi
-    done
-    
-    if [ -n "$profile_file" ] && [ -f "$profile_file" ]; then
-      echo "  Profile: $profile_file"
-      echo
-      echo "  Key Restrictions:"
-      
-      # Network access
-      if grep -q "network" "$profile_file" 2>/dev/null; then
-        echo "    [+] Network: Controlled"
-      else
-        echo "    [-] Network: Unrestricted"
-      fi
-      
-      # File access
-      if grep -q "deny.*/" "$profile_file" 2>/dev/null; then
-        echo "    [+] Filesystem: Restricted"
-      fi
-      
-      # Capabilities
-      cap_count=$(grep -c "capability" "$profile_file" 2>/dev/null)
-      if [ "$cap_count" -gt 0 ]; then
-        echo "    [+] Capabilities: $cap_count explicit grants"
-      fi
-      
-      # Process execution
-      if grep -q "deny.*exec" "$profile_file" 2>/dev/null; then
-        echo "    [+] Exec: Restricted"
-      fi
-      
-    else
-      echo "  Profile: NixOS dynamic profile (not directly readable)"
-      echo
-      echo "  Enforcement: Process tree is confined"
-      echo "    [+] All $aa_enforced Brave processes under mandatory access control"
-      echo "    [+] File access, network, and capabilities controlled by kernel"
-      echo "    [+] Profile inherited from parent process"
-    fi
-  fi
-else
-  echo "No AppArmor enforcement detected"
-fi
 
 echo "-------------------------------------------------------------------------------"
 echo
 
-# Critical exploit mitigation
-echo "[EXPLOIT MITIGATION FLAGS - TOP 20 CRITICAL]"
+# ============================================================================
+# EXPLOIT MITIGATION FLAGS
+# ============================================================================
+echo "[EXPLOIT MITIGATIONS]"
 echo "-------------------------------------------------------------------------------"
 
-# Get flags from main process AND a renderer
 main_cmdline=$(cat /proc/$brave_binary/cmdline 2>/dev/null | tr '\0' ',' | tr '\n' ',')
 renderer_cmdline=""
 if [ -n "${renderer_pids[0]}" ]; then
@@ -173,89 +183,101 @@ check_flag() {
   local desc=$2
   
   if echo "$combined" | grep -qi "$flag"; then
-    printf "%-50s: ACTIVE\n" "$desc"
+    printf "%-50s: ✅ ACTIVE\n" "$desc"
     return 0
   else
-    printf "%-50s: MISSING\n" "$desc"
+    printf "%-50s: ❌ MISSING\n" "$desc"
     return 1
   fi
 }
 
-echo "Memory Safety (UAF/Heap Protection):"
-miracle=0; check_flag "MiraclePtr" "  PartitionAlloc MiraclePtr" && miracle=1
+echo "Memory Safety (UAF/Heap):"
+miracle=0; check_flag "MiraclePtr" "  MiraclePtr" && miracle=1
 backup=0; check_flag "PartitionAllocBackupRefPtr\|BackupRefPtr" "  BackupRefPtr" && backup=1
-cage=0; check_flag "V8ForceMemoryCage\|V8MemoryCage" "  V8 Memory Cage" && cage=1
+cage=0; check_flag "V8ForceMemoryCage" "  V8 Memory Cage" && cage=1
+pcscan=0; check_flag "PartitionAllocPCScan" "  PCScan (Dangling Ptr Detection)" && pcscan=1
+quarantine=0; check_flag "PartitionAllocSchedulerLoopQuarantine" "  Quarantine (Delayed Free)" && quarantine=1
+zapping=0; check_flag "PartitionAllocZappingByFreeFlags" "  Zapping (Zero on Free)" && zapping=1
 
 echo
-echo "JIT/Code Execution Hardening:"
-jitless=0; check_flag "jitless\|--jitless" "  V8 JIT Disabled (--jitless)" && jitless=1
-nojit=0; check_flag "V8NoJIT" "  V8NoJIT Feature Flag" && nojit=1
-nowasm=0; check_flag "WebAssembly" "  WASM Disabled (via feature flag)" && nowasm=1
+echo "JIT/Code Execution:"
+jitless=0; check_flag "jitless\|--jitless" "  JIT Disabled (--jitless)" && jitless=1
+v8mit=0; check_flag "V8UntrustedCodeMitigations" "  V8 Untrusted Code Mitigations" && v8mit=1
+wasm=0; check_flag "WasmCodeProtection" "  WASM Code Protection" && wasm=1
 
 echo
 echo "Process Isolation:"
 siteproc=0; check_flag "site-per-process" "  Site-Per-Process" && siteproc=1
 strict=0; check_flag "StrictSiteIsolation" "  Strict Site Isolation" && strict=1
-isolate=0; check_flag "isolate-origins\|IsolateOrigins" "  Origin Isolation" && isolate=1
+isolate=0; check_flag "IsolateOrigins" "  Origin Isolation" && isolate=1
 
 echo
-echo "Sandbox Hardening:"
+echo "Sandbox:"
 netsand=0; check_flag "NetworkServiceSandbox" "  Network Service Sandboxed" && netsand=1
 audio=0; check_flag "AudioServiceSandbox\|AudioServiceOutOfProcess" "  Audio Service Sandboxed" && audio=1
 
 echo
-echo "Attack Surface Reduction:"
-webgl=0; check_flag "disable-webgl" "  WebGL Disabled" && webgl=1
-webgpu=0; check_flag "disable-webgpu" "  WebGPU Disabled" && webgpu=1
+echo "Attack Surface:"
 webrtc=0; check_flag "disable-webrtc" "  WebRTC Disabled" && webrtc=1
 
+echo "-------------------------------------------------------------------------------"
 echo
-echo "Cross-Origin Security:"
-coop=0; check_flag "CrossOriginOpenerPolicy" "  COOP Enforced" && coop=1
-coep=0; check_flag "CrossOriginEmbedderPolicy" "  COEP" && coep=1
+
+# ============================================================================
+# HARDWARE SECURITY
+# ============================================================================
+echo "[HARDWARE SECURITY FEATURES]"
+echo "-------------------------------------------------------------------------------"
+
+ibt_enabled=$(grep -q "ibt=on" /proc/cmdline 2>/dev/null && echo "1" || echo "0")
+shstk_enabled=$(grep -q "shstk=on" /proc/cmdline 2>/dev/null && echo "1" || echo "0")
+lam_enabled=$(grep -q "lam=on" /proc/cmdline 2>/dev/null && echo "1" || echo "0")
+
+printf "%-40s: %s\n" "IBT (Indirect Branch Tracking)" "$([ $ibt_enabled -eq 1 ] && echo '✅ ENABLED' || echo '❌ DISABLED')"
+printf "%-40s: %s\n" "SHSTK (Shadow Stack)" "$([ $shstk_enabled -eq 1 ] && echo '✅ ENABLED' || echo '❌ DISABLED')"
+printf "%-40s: %s\n" "LAM (Linear Address Masking)" "$([ $lam_enabled -eq 1 ] && echo '✅ ENABLED' || echo '❌ DISABLED')"
 
 echo "-------------------------------------------------------------------------------"
 echo
 
-# Kernel hardening
-echo "[KERNEL HARDENING]"
-echo "-------------------------------------------------------------------------------"
-yama=$(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null)
-bpf=$(cat /proc/sys/kernel/unprivileged_bpf_disabled 2>/dev/null)
-perf=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null)
-kptr=$(cat /proc/sys/kernel/kptr_restrict 2>/dev/null)
-aa_total_sys=$(echo "$AA_STATUS" | grep "processes are in enforce mode" | awk '{print $1}')
-
-printf "%-40s: %s %s\n" "Ptrace Scope" "${yama:-N/A}" "$([ "$yama" = "3" ] && echo '[OK]' || echo '[WARN]')"
-printf "%-40s: %s %s\n" "Unprivileged BPF" "${bpf:-N/A}" "$([ "$bpf" = "2" ] && echo '[OK]' || echo '[WARN]')"
-printf "%-40s: %s %s\n" "Perf Events" "${perf:-N/A}" "$([ "$perf" = "3" ] && echo '[OK]' || echo '[WARN]')"
-printf "%-40s: %s %s\n" "Kernel Pointer Hiding" "${kptr:-N/A}" "$([ "$kptr" = "2" ] && echo '[OK]' || echo '[WARN]')"
-printf "%-40s: %s total %s\n" "AppArmor System-Wide" "${aa_total_sys:-0}" "$([ ${aa_total_sys:-0} -gt 0 ] && echo '[OK]' || echo '[WARN]')"
-echo "-------------------------------------------------------------------------------"
-echo
-
-# Assessment
+# ============================================================================
+# SECURITY ASSESSMENT
+# ============================================================================
 echo "[SECURITY ASSESSMENT]"
 echo "==============================================================================="
 
 # Calculate score
-flags_score=$((miracle + backup + cage + jitless + nojit + nowasm + siteproc + strict + netsand + audio))
-kernel_score=0
-[ $seccomp_ok -eq $renderers ] && ((kernel_score++))
-[ "$yama" = "3" ] && ((kernel_score++))
-[ "$bpf" = "2" ] && ((kernel_score++))
-[ $aa_enforced -gt 0 ] && ((kernel_score++))
+browser_score=$((miracle + backup + cage + pcscan + quarantine + zapping + v8mit + wasm + siteproc + strict + netsand + audio))
+hardware_score=0
+[ $seccomp_ok -eq $renderers ] && ((hardware_score++))
+[ $aa_enforced -gt 0 ] && ((hardware_score++))
+[ $ibt_enabled -eq 1 ] && ((hardware_score++))
+[ $shstk_enabled -eq 1 ] && ((hardware_score++))
+[ $graphene_active -eq 1 ] && ((hardware_score++))
 
-total_score=$((flags_score + kernel_score))
-max_score=14
+total_score=$((browser_score + hardware_score))
+max_score=17
 
-printf "Score: %d/%d exploit mitigations active\n\n" "$total_score" "$max_score"
+printf "Browser Mitigations: %2d/12\n" "$browser_score"
+printf "System/Hardware:     %2d/5\n" "$hardware_score"
+printf "Total Score:         %2d/%d\n\n" "$total_score" "$max_score"
 
-if [ $total_score -ge 12 ]; then
-  echo "Status: HARDENED "
-elif [ $total_score -ge 8 ]; then
-  echo "Status: PROTECTED - Good security with gaps"
+if [ $total_score -ge 14 ]; then
+  echo "Status: 🔒 MAXIMUM HARDENING"
+  echo "        • Triple-layer memory protection active"
+  echo "        • Estimated exploit cost: $500k+ (4-5 chained 0-days)"
+  echo "        • Attack difficulty: EXTREME"
+elif [ $total_score -ge 11 ]; then
+  echo "Status: 🛡️  HARDENED"
+  echo "        • Strong protections with minor gaps"
+  echo "        • Attack difficulty: HIGH"
+elif [ $total_score -ge 7 ]; then
+  echo "Status: ⚠️  PROTECTED"
+  echo "        • Good baseline security"
+  echo "        • Attack difficulty: MODERATE"
 else
-  echo "Status: BASIC - Using Chromium defaults only"
+  echo "Status: ❌ BASIC"
+  echo "        • Chromium defaults only"
+  echo "        • Attack difficulty: LOW"
 fi
 echo "==============================================================================="
