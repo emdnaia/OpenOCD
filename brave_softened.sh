@@ -31,7 +31,6 @@ PartitionConnectionsByNetworkIsolationKey,\
 PartitionHttpServerPropertiesByNetworkIsolationKey,\
 BlockInsecurePrivateNetworkRequests,\
 ThirdPartyStoragePartitioning,\
-\
 PartitionAllocGigaCage,\
 BackupRefPtrNoEntryDeletion,\
 PartitionAllocSchedulerLoopQuarantine,\
@@ -44,26 +43,34 @@ PartitionIndexedDB,\
 PartitionBlobCache,\
 PartitionCodeCache,\
 PartitionedBlobUrlStore,\
-\
-ReduceTimerPrecision,\
-ClampTimeResolution,\
-JitterUniformWebExposedApis,\
-\
 StrictOriginIsolation,\
 IsolateSandboxedIframes,\
 OriginAgentClusterDefaultEnabled,\
-DisableProcessReuse,\
 StrictExtensionIsolation,\
-\
 SameSiteByDefaultCookies,\
 CookiesWithoutSameSiteMustBeSecure,\
 PartitionSSLSessionsByNetworkIsolationKey,\
 PartitionNelAndReportingByNetworkIsolationKey,\
 SplitHostCacheByNetworkIsolationKey,\
-\
 BlockInsecureDownloads,\
 MixedContentAutoupgrade,\
-SameSiteDefaultChecksMethodRigorously \
+SameSiteDefaultChecksMethodRigorously,\
+RawPtrZeroOnConstruct,\
+RawPtrZeroOnMove,\
+RawPtrZeroOnDestruct,\
+PartitionAllocPCScan,\
+PartitionAllocMemoryReclaimer,\
+PartitionAllocLazyCommit,\
+UsePartitionAllocForArrayBufferAllocator,\
+PartitionAllocUseFreelist,\
+PartitionAllocUseAltBuckets,\
+V8UntrustedCodeMitigations,\
+V8VirtualAddressSpaceReservation,\
+EnforceNoopenerOnPopups,\
+IsolateExtensions,\
+IsolatedAppOrigins,\
+WasmCodeProtection,\
+WasmTrapHandler \
   \
   --disable-features=\
 AutofillServerCommunication,\
@@ -77,7 +84,6 @@ PrivateAggregationAPI,\
 Fledge,\
 FencedFrames,\
 SharedStorageAPI,\
-\
 BackForwardCache,\
 Prerender2,\
 OptimizationGuideHintDownloading \
@@ -86,8 +92,6 @@ OptimizationGuideHintDownloading \
   --disable-sync \
   --disable-default-apps \
   --disable-component-update \
-  --disable-domain-reliability \
-  --no-pings \
   --no-referrers \
   --deny-permission-prompts \
   --enable-strict-mixed-content-checking \
