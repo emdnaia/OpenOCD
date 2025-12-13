@@ -76,7 +76,15 @@ doas nixos-rebuild switch
 
 ## Step 5: Enroll Keys
 ```bash
-# Enroll with Microsoft keys (recommended - needed for UEFI drivers)
+
+# now pick one #
+
+#### option 1 #### 
+# your keys
+# doas sbctl enroll-keys
+
+####  option 2 #### 
+#  Microsoft keys (make sure 
 doas sbctl enroll-keys --microsoft
 
 # Verify enrollment
