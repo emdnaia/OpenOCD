@@ -7,20 +7,19 @@ Without Secure Boot, an attacker with root can write to `/boot`, drop a backdoor
 mokutil --sb-state      # Check Secure Boot status (probably disabled)
 sbctl --version         # Verify sbctl installed
 ```
-
 ## Step 1: Add Lanzaboote
 ```bash
-# Verify release
+# Verify latest release
 curl -s https://api.github.com/repos/nix-community/lanzaboote/releases/latest | jq '{tag: .tag_name, date: .published_at}'
 
 # Add with niv
 cd /etc/nixos
 doas niv init                                    # skip if nix/sources.json exists
-doas niv add nix-community/lanzaboote -r v1.0.0
+doas niv add nix-community/lanzaboote -r v1.0.0  # "already exists" = OK
 
-# Verify pinned commit
+# Verify pinned version
 cat nix/sources.json | jq '.lanzaboote.rev'
-# Expected: "2fe211d9c0e2320ce23dc995a3f93666ca149d9a"
+# Should show: "v1.0.0"
 ```
 
 ## Step 2: Edit configuration.nix
