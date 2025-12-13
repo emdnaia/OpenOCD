@@ -5,7 +5,7 @@ Without Secure Boot, an attacker with root can write to `/boot`, drop a backdoor
 ## Pre-Flight Checks
 ```bash
 mokutil --sb-state      # Check Secure Boot status (probably disabled)
-sbctl --version         # Verify sbctl installed
+sbctl status        # Check sbctl 
 ```
 ## Step 1: Add Lanzaboote
 ```bash
