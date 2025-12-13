@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 export TZ=America/New_York
-P1="6.6.6.6:6666"
-P2="7.7.7.7:7777"
+P1="6.6.6.6:3128"
+P2="7.7.7.7:3128"
 export http_proxy="http://$P1"
 export https_proxy="$http_proxy"
 export ALL_PROXY="$http_proxy"
 export NO_PROXY=""
 
+# Dynamically resolve graphene malloc
+GRAPHENE_LIB=$(echo /nix/store/*graphene-hardened-malloc*/lib/libhardened_malloc.so 2>/dev/null | head -1)
+if [[ -f "$GRAPHENE_LIB" ]]; then
+  export LD_PRELOAD="$GRAPHENE_LIB"
+fi
+
 exec brave \
+  --use-system-allocator \
   --force-dark-mode --password-store=gnome-libsecret --no-first-run \
   --proxy-server="http://$P1;http://$P2" \
   --proxy-bypass-list="<local>,localhost,127.0.0.1" \
@@ -93,7 +100,6 @@ OptimizationGuideHintDownloading \
   --disable-default-apps \
   --disable-component-update \
   --no-referrers \
-  --deny-permission-prompts \
   --enable-strict-mixed-content-checking \
   --disable-notifications \
   "$@"
