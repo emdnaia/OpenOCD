@@ -326,5 +326,33 @@ else
 fi
 echo ""
 
+# Revert DMT Defense (Squid on OpenBSD)
+
+#################################################################
+# DNS CACHE TUNING  -- revert to defaults (was [DMT DEFENSE])
+#################################################################
+fqdncache_size 1024          # was 2048
+ipcache_size 1024            # was 4096
+# ipcache_low 90             # default, drop
+# ipcache_high 95            # default, drop
+positive_dns_ttl 6 hours     # was 2 hours
+negative_dns_ttl 1 minute    # was 5 minutes
+# negative_ttl 30 seconds    # was set, default is 0 -> drop
+
+#################################################################
+# ACCESS RULES -- drop OPTIONS (DMT timing primitive)
+#################################################################
+acl dangerous_methods method TRACE PURGE   # removed OPTIONS, kept XST/poison defenses
+# acl Safe_methods method GET HEAD POST CONNECT OPTIONS   # uncomment if CORS preflight needed
+
+#--- /etc/pf.conf (separate file) ---------------------------------
+# remove the DNS rate limit + table, then: pfctl -f /etc/pf.conf
+# table <dns_flood> persist                          # delete
+# pass out proto udp to port 53 \                    # delete max-src-conn-rate clause
+#   keep state (max-src-conn-rate 50/10 ...)
+
+#--- apply --------------------------------------------------------
+# squid -k parse        # validate
+# squid -k reconfigure  # apply
 # Cleanup PF table
 pfctl -t dns_flood -T flush 2>/dev/null
